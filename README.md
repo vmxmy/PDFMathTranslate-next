@@ -53,6 +53,7 @@ For details on how to contribute, please consult the [Contribution Guide](https:
 
 <h2 id="updates">Updates</h2>
 
+- [Feb. 12, 2026] HTTP API now supports异步队列任务、状态查询与按需下载翻译结果（by [@vmxmy](https://github.com/vmxmy))
 - [Jun. 4, 2025] The project is renamed and move to [PDFMathTranslate/PDFMathTranslate-next](https://github.com/PDFMathTranslate/PDFMathTranslate-next) (by [@awwaawwa](https://github.com/awwaawwa))
 - [Mar. 3, 2025] Experimental support for the new backend [BabelDOC](https://github.com/funstory-ai/BabelDOC) WebUI added as an experimental option (by [@awwaawwa](https://github.com/awwaawwa))
 - [Feb. 22 2025] Better release CI and well-packaged windows-amd64 exe (by [@awwaawwa](https://github.com/awwaawwa))
@@ -107,15 +108,52 @@ For detailed explanations, please refer to our document about [Advanced Usage](h
 
 <h2 id="downstream">Secondary Development (APIs)</h2>
 
-> [!NOTE]
->
-> Currently, no relevant documentation is provided. It will be supplemented later. Please wait patiently.
+Run an HTTP service with:
 
+```
+uvicorn pdf2zh_next.http_api:app --host 0.0.0.0 --port 8000
+```
 
-<!-- For downstream applications, please refer to our document about [API Details](./docs/APIS.md) for futher information about:
+The service exposes `POST /v1/translate`, accepting a PDF plus translation settings in `multipart/form-data`:
 
-- [Python API](./docs/APIS.md#api-python), how to use the program in other Python programs
-- [HTTP API](./docs/APIS.md#api-http), how to communicate with a server with the program installed -->
+Submitting a job returns a task identifier:
+
+```
+curl -X POST \
+  -F "file=@/path/to/paper.pdf" \
+  -F 'settings={"translate_engine_settings": {"translate_engine_type": "OpenAI", "openai_api_key": "sk-..."}}' \
+  http://localhost:8000/v1/translate
+```
+
+Response example:
+
+```
+{
+  "task_id": "1f7bb7c5f90a4a1f9e0b6725bf6c1730",
+  "status": "queued",
+  "status_url": "/v1/tasks/1f7bb7c5f90a4a1f9e0b6725bf6c1730",
+  "result_url": "/v1/tasks/1f7bb7c5f90a4a1f9e0b6725bf6c1730/result"
+}
+```
+
+- `GET /v1/tasks/{task_id}` 查看状态。
+- `GET /v1/tasks/{task_id}/result` 下载 ZIP（可选 `?cleanup=true` 删除临时文件）。
+- 请求参数 `wait=true` 时，接口将在任务完成后直接返回 ZIP：
+
+  ```
+  curl -X POST \
+    -F "file=@/path/to/paper.pdf" \
+    -F 'settings={...}' \
+    "http://localhost:8000/v1/translate?wait=true" --output translation.zip
+  ```
+
+Environment variables:
+
+- `PDF2ZH_API_MAX_CONCURRENCY`: maximum concurrent translations (default `2`).
+- `PDF2ZH_API_QUEUE_MAXSIZE`: optional queue length limit (default unlimited).
+- `PDF2ZH_API_EXEC_TIMEOUT`: seconds to wait when acquiring a worker slot.
+
+`GET /v1/health` 返回服务状态与当前队列信息。Future API expansions will be documented here.
 
 <h2 id="langcode">Language Code</h2>
 
