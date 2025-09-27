@@ -1,0 +1,33 @@
+# Development overrides for docker-compose.yml
+version: '3.8'
+
+services:
+  pdf2zh-gui:
+    volumes:
+      - .:/app  # Mount source code for development
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+      - ./cache:/app/cache
+    environment:
+      - PDF2ZH_DEBUG=true
+      - PYTHONPATH=/app
+    command: ["python", "-m", "pdf2zh_next.gui"]
+    ports:
+      - "7861:7860"  # Different port for development
+
+  pdf2zh-api:
+    volumes:
+      - .:/app  # Mount source code for development
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+      - ./cache:/app/cache
+    environment:
+      - PDF2ZH_DEBUG=true
+      - PYTHONPATH=/app
+    command: ["uvicorn", "pdf2zh_next.http_api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8001:8000"  # Different port for development
+
+  ollama:
+    ports:
+      - "11435:11434"  # Different port for development

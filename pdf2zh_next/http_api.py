@@ -73,7 +73,14 @@ EXEC_TIMEOUT = (
 SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENCY)
 TASKS: dict[str, TaskRecord] = {}
 TASK_QUEUE: asyncio.Queue[TaskRecord] = asyncio.Queue()
-WORKER_TASK: asyncio.Task | None = None
+WORKER_COUNT_RAW = os.getenv("PDF2ZH_API_WORKERS")
+try:
+    WORKER_COUNT = int(WORKER_COUNT_RAW) if WORKER_COUNT_RAW else MAX_CONCURRENCY
+except ValueError as exc:  # noqa: BLE001
+    raise RuntimeError("PDF2ZH_API_WORKERS must be an integer") from exc
+if WORKER_COUNT < 1:
+    raise RuntimeError("PDF2ZH_API_WORKERS must be >= 1")
+WORKER_TASKS: list[asyncio.Task] = []
 
 app = FastAPI(title="PDFMathTranslate-next API", version=__version__)
 
@@ -259,17 +266,19 @@ def _get_active_tasks_count() -> int:
 
 @app.on_event("startup")
 async def _on_startup() -> None:
-    global WORKER_TASK
-    WORKER_TASK = asyncio.create_task(_task_worker_loop())
-    logger.info("Task worker started")
+    global WORKER_TASKS
+    WORKER_TASKS = [asyncio.create_task(_task_worker_loop()) for _ in range(WORKER_COUNT)]
+    logger.info("Task workers started (count=%d)", WORKER_COUNT)
 
 
 @app.on_event("shutdown")
 async def _on_shutdown() -> None:
-    if WORKER_TASK is not None:
-        WORKER_TASK.cancel()
+    for worker in WORKER_TASKS:
+        worker.cancel()
+    for worker in WORKER_TASKS:
         with contextlib.suppress(asyncio.CancelledError):
-            await WORKER_TASK
+            await worker
+    WORKER_TASKS.clear()
     for task_id, task in list(TASKS.items()):
         _cleanup_task(task)
         TASKS.pop(task_id, None)

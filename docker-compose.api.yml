@@ -1,0 +1,56 @@
+# PDFMathTranslate API-only Docker Compose Configuration
+# This configuration only starts the API service on port 8000
+
+services:
+  pdf2zh-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PDF2ZH_API_MAX_CONCURRENCY=20
+      - PDF2ZH_QPS=8
+      - PDF2ZH_POOL_MAX_WORKERS=8
+      # Translation service configurations (uncomment and set as needed)
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - AZURE_API_KEY=${AZURE_API_KEY}
+      # - AZURE_ENDPOINT=${AZURE_ENDPOINT}
+      # - DEEPL_API_KEY=${DEEPL_API_KEY}
+      # - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # - BING_API_KEY=${BING_API_KEY}
+      # - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+      - ./cache:/app/cache
+    restart: unless-stopped
+    command: ["uvicorn", "pdf2zh_next.http_api:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - pdf2zh-network
+
+  # Optional: Ollama for local translation models
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   environment:
+ #     - OLLAMA_HOST=0.0.0.0
+  #   restart: unless-stopped
+  #   networks:
+  #     - pdf2zh-network
+
+networks:
+  pdf2zh-network:
+    driver: bridge
+
+# volumes:
+#   ollama-data:
+#     driver: local

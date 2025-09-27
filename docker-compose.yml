@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  pdf2zh-gui:
+    build: .
+    ports:
+      - "7860:7860"
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Translation service configurations (uncomment and set as needed)
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - AZURE_API_KEY=${AZURE_API_KEY}
+      # - AZURE_ENDPOINT=${AZURE_ENDPOINT}
+      # - DEEPL_API_KEY=${DEEPL_API_KEY}
+      # - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # - BING_API_KEY=${BING_API_KEY}
+      # - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+      - ./cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - ollama
+    networks:
+      - pdf2zh-network
+
+  pdf2zh-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Same translation service configurations as GUI
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - AZURE_API_KEY=${AZURE_API_KEY}
+      # - AZURE_ENDPOINT=${AZURE_ENDPOINT}
+      # - DEEPL_API_KEY=${DEEPL_API_KEY}
+      # - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # - BING_API_KEY=${BING_API_KEY}
+      # - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+      - ./cache:/app/cache
+    restart: unless-stopped
+    command: ["uvicorn", "pdf2zh_next.http_api:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      - ollama
+    networks:
+      - pdf2zh-network
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    networks:
+      - pdf2zh-network
+
+  # Optional: Ollama Web UI (uncomment if you want a web interface for Ollama)
+  # ollama-webui:
+  #   image: ghcr.io/open-webui/open-webui:main
+  #   ports:
+  #     - "3000:8080"
+  #   volumes:
+  #     - ollama-webui-data:/app/backend/data
+  #   environment:
+  #     - OLLAMA_API_BASE_URL=http://ollama:11434/api
+  #   depends_on:
+  #     - ollama
+  #   restart: unless-stopped
+  #   networks:
+  #     - pdf2zh-network
+
+volumes:
+  ollama-data:
+    driver: local
+  # ollama-webui-data:
+  #   driver: local
+
+networks:
+  pdf2zh-network:
+    driver: bridge
+
+# Optional: Add nginx reverse proxy for production
+# nginx:
+#   image: nginx:alpine
+#   ports:
+#     - "80:80"
+#     - "443:443"
+#   volumes:
+#     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#     - ./ssl:/etc/nginx/ssl:ro
+#   depends_on:
+#     - pdf2zh-gui
+#     - pdf2zh-api
+#   restart: unless-stopped
+#   networks:
+#     - pdf2zh-network
