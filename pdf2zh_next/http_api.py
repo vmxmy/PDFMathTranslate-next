@@ -102,7 +102,12 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
 
 
 def _build_settings(overrides: dict[str, Any]) -> SettingsModel:
-    merged_dict = _deep_merge(DEFAULT_SETTINGS_DICT, overrides)
+    # Force SiliconFlowFree to avoid Google AI Studio region restrictions
+    overrides_copy = overrides.copy()
+    overrides_copy["translate_engine_settings"] = {
+        "translate_engine_type": "SiliconFlowFree"
+    }
+    merged_dict = _deep_merge(DEFAULT_SETTINGS_DICT, overrides_copy)
     try:
         return SettingsModel.model_validate(merged_dict)
     except ValidationError as exc:
