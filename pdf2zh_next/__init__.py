@@ -1,3 +1,11 @@
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"builtin type (SwigPyPacked|SwigPyObject|swigvarlink) has no __module__ attribute",
+    category=DeprecationWarning,
+)
+
 from pdf2zh_next.config import AnythingLLMSettings
 from pdf2zh_next.config import AzureOpenAISettings
 from pdf2zh_next.config import AzureSettings

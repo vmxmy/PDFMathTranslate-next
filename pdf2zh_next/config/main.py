@@ -56,11 +56,15 @@ def build_args_parser(
     if field_name2type is None:
         field_name2type = {}
 
+    target_container = parser
     if settings_model is not None:
-        parser = parser.add_argument_group(
-            title=settings_model.__name__,
-            description=getdoc(settings_model),
-        )
+        if isinstance(parser, argparse.ArgumentParser):
+            target_container = parser.add_argument_group(
+                title=settings_model.__name__,
+                description=getdoc(settings_model),
+            )
+        else:
+            target_container = parser
     else:
         settings_model = CLIEnvSettingsModel
 
@@ -73,7 +77,7 @@ def build_args_parser(
             if recursion_depth > 0:
                 raise ValueError("not supported nested settings models")
             build_args_parser(
-                parser,
+                target_container,
                 field_detail.default_factory,
                 field_name2type,
                 recursion_depth + 1,
@@ -103,7 +107,7 @@ def build_args_parser(
                     raise ValueError("set type must be str")
 
                 set_count += 1
-                parser.add_argument(
+                target_container.add_argument(
                     f"{args_name}",
                     nargs="*",
                     type=str,
@@ -113,7 +117,7 @@ def build_args_parser(
 
             for arg in args:
                 if arg is bool:
-                    parser.add_argument(
+                    target_container.add_argument(
                         f"--{args_name}",
                         action="store_true"
                         if field_detail.default is False
@@ -124,7 +128,7 @@ def build_args_parser(
                 elif arg == NoneType:
                     continue
                 else:
-                    parser.add_argument(
+                    target_container.add_argument(
                         f"--{args_name}",
                         type=arg,
                         default=MagicDefault,

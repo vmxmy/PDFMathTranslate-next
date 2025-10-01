@@ -353,17 +353,17 @@ async def _translate_in_subprocess(
             logger.debug(f"Failed to close pipe_progress_recv: {e}")
 
         # 终止子进程，使用超时防止卡住
-        translate_process.join(timeout=2)
+        translate_process.join(timeout=10)
         logger.debug("join translate process")
         if translate_process.is_alive():
             logger.info("Translate process did not finish in time, terminate it")
             translate_process.terminate()
-            translate_process.join(timeout=1)
+            translate_process.join(timeout=5)
         if translate_process.is_alive():
             logger.info("Translate process did not finish in time, killing it")
             try:
                 translate_process.kill()
-                translate_process.join(timeout=1)
+                translate_process.join(timeout=2)
                 logger.info("Translate process killed")
             except Exception as e:
                 logger.exception(f"Error killing translate process: {e}")

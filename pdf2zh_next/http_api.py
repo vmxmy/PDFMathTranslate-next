@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import io
 import json
 import logging
@@ -25,9 +26,14 @@ from fastapi.responses import JSONResponse
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
+from babeldoc.assets import assets as babeldoc_assets
+
 from pdf2zh_next.const import __version__
+from pdf2zh_next.config.cli_env_model import CLIEnvSettingsModel
 from pdf2zh_next.config.model import SettingsModel
-from pdf2zh_next.config.translate_engine_model import SiliconFlowFreeSettings
+from pdf2zh_next.config.translate_engine_model import (
+    TRANSLATION_ENGINE_METADATA_MAP,
+)
 from pdf2zh_next.high_level import do_translate_async_stream
 
 logger = logging.getLogger(__name__)
@@ -55,13 +61,10 @@ class TaskRecord:
     event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
 
 
-DEFAULT_TRANSLATION_ENGINE = SiliconFlowFreeSettings()
-DEFAULT_SETTINGS_MODEL = SettingsModel(
-    translate_engine_settings=DEFAULT_TRANSLATION_ENGINE,
-)
-DEFAULT_SETTINGS_DICT = DEFAULT_SETTINGS_MODEL.model_dump(mode="json")
+DEFAULT_CLI_SETTINGS = CLIEnvSettingsModel()
+DEFAULT_CLI_SETTINGS_DICT = DEFAULT_CLI_SETTINGS.model_dump(mode="json")
 
-MAX_CONCURRENCY = int(os.getenv("PDF2ZH_API_MAX_CONCURRENCY", "2"))
+MAX_CONCURRENCY = int(os.getenv("PDF2ZH_API_MAX_CONCURRENCY", "20"))
 if MAX_CONCURRENCY < 1:
     raise RuntimeError("PDF2ZH_API_MAX_CONCURRENCY must be >= 1")
 
@@ -81,8 +84,31 @@ except ValueError as exc:  # noqa: BLE001
 if WORKER_COUNT < 1:
     raise RuntimeError("PDF2ZH_API_WORKERS must be >= 1")
 WORKER_TASKS: list[asyncio.Task] = []
+# Track active asyncio tasks so we can await completion on shutdown
+ACTIVE_TASKS: set[asyncio.Task[None]] = set()
 
-app = FastAPI(title="PDFMathTranslate-next API", version=__version__)
+@contextlib.asynccontextmanager
+async def _lifespan(app: FastAPI):  # noqa: ARG001
+    global WORKER_TASKS
+    WORKER_TASKS = [asyncio.create_task(_task_worker_loop()) for _ in range(WORKER_COUNT)]
+    logger.info("Task workers started (count=%d)", WORKER_COUNT)
+    try:
+        yield
+    finally:
+        for worker in WORKER_TASKS:
+            worker.cancel()
+        for worker in WORKER_TASKS:
+            with contextlib.suppress(asyncio.CancelledError):
+                await worker
+        WORKER_TASKS.clear()
+        if ACTIVE_TASKS:
+            await asyncio.gather(*ACTIVE_TASKS, return_exceptions=True)
+        for task_id, task in list(TASKS.items()):
+            _cleanup_task(task)
+            TASKS.pop(task_id, None)
+
+
+app = FastAPI(title="PDFMathTranslate-next API", version=__version__, lifespan=_lifespan)
 
 
 def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
@@ -101,18 +127,77 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
     return merged
 
 
-def _build_settings(overrides: dict[str, Any]) -> SettingsModel:
-    # Force SiliconFlowFree to avoid Google AI Studio region restrictions
-    overrides_copy = overrides.copy()
-    overrides_copy["translate_engine_settings"] = {
-        "translate_engine_type": "SiliconFlowFree"
+def _normalize_translate_engine_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if "translate_engine_settings" not in payload:
+        return payload
+
+    engine_payload = payload.pop("translate_engine_settings") or {}
+    engine_type = engine_payload.get("translate_engine_type")
+    if not engine_type:
+        raise HTTPException(
+            status_code=400,
+            detail="translate_engine_settings requires translate_engine_type",
+        )
+
+    metadata = TRANSLATION_ENGINE_METADATA_MAP.get(engine_type)
+    if metadata is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported translate_engine_type: {engine_type}",
+        )
+
+    payload[metadata.cli_flag_name] = True
+
+    detail_payload = {
+        k: v for k, v in engine_payload.items() if k != "translate_engine_type"
     }
-    merged_dict = _deep_merge(DEFAULT_SETTINGS_DICT, overrides_copy)
+    if metadata.cli_detail_field_name:
+        existing_detail = payload.get(metadata.cli_detail_field_name) or {}
+        if not isinstance(existing_detail, dict):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{metadata.cli_detail_field_name} must be an object",
+            )
+        merged_detail = _deep_merge(existing_detail, detail_payload)
+        payload[metadata.cli_detail_field_name] = merged_detail
+    elif detail_payload:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "translate_engine_settings includes unsupported detail fields "
+                f"for engine {engine_type}"
+            ),
+        )
+
+    return payload
+
+
+def _build_cli_settings(overrides: dict[str, Any]) -> CLIEnvSettingsModel:
+    if overrides is None:
+        overrides = {}
+    payload = copy.deepcopy(overrides)
+    payload = _normalize_translate_engine_payload(payload)
+    merged_dict = _deep_merge(DEFAULT_CLI_SETTINGS_DICT, payload)
     try:
-        return SettingsModel.model_validate(merged_dict)
+        return CLIEnvSettingsModel.model_validate(merged_dict)
     except ValidationError as exc:
         logger.warning("Invalid settings payload: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid settings payload") from exc
+
+
+def _build_settings(overrides: dict[str, Any]) -> SettingsModel:
+    cli_settings = _build_cli_settings(overrides)
+    settings = cli_settings.to_settings_model()
+    return settings
+
+
+def _resolve_optional_path(raw_path: str | None) -> Path | None:
+    if raw_path in (None, ""):
+        return None
+    try:
+        return Path(raw_path).expanduser().resolve()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid path: {raw_path}") from exc
 
 
 async def _acquire_slot(timeout: float | None) -> None:
@@ -254,10 +339,20 @@ async def _execute_task(task: TaskRecord) -> None:
 async def _task_worker_loop() -> None:
     while True:
         task = await TASK_QUEUE.get()
-        try:
-            await _execute_task(task)
-        finally:
-            TASK_QUEUE.task_done()
+
+        async def _run_task(record: TaskRecord) -> None:
+            try:
+                await _execute_task(record)
+            finally:
+                TASK_QUEUE.task_done()
+
+        worker = asyncio.create_task(_run_task(task))
+        ACTIVE_TASKS.add(worker)
+
+        def _cleanup_completed(finished: asyncio.Task[None]) -> None:
+            ACTIVE_TASKS.discard(finished)
+
+        worker.add_done_callback(_cleanup_completed)
 
 
 def _cleanup_task(task: TaskRecord) -> None:
@@ -267,26 +362,6 @@ def _cleanup_task(task: TaskRecord) -> None:
 
 def _get_active_tasks_count() -> int:
     return sum(1 for task in TASKS.values() if task.state in {TaskState.QUEUED, TaskState.RUNNING})
-
-
-@app.on_event("startup")
-async def _on_startup() -> None:
-    global WORKER_TASKS
-    WORKER_TASKS = [asyncio.create_task(_task_worker_loop()) for _ in range(WORKER_COUNT)]
-    logger.info("Task workers started (count=%d)", WORKER_COUNT)
-
-
-@app.on_event("shutdown")
-async def _on_shutdown() -> None:
-    for worker in WORKER_TASKS:
-        worker.cancel()
-    for worker in WORKER_TASKS:
-        with contextlib.suppress(asyncio.CancelledError):
-            await worker
-    WORKER_TASKS.clear()
-    for task_id, task in list(TASKS.items()):
-        _cleanup_task(task)
-        TASKS.pop(task_id, None)
 
 
 @app.post("/v1/translate")
@@ -418,6 +493,90 @@ async def delete_task(task_id: str):
         raise HTTPException(status_code=409, detail="Cannot delete running task")
     _cleanup_task(task)
     return JSONResponse({"task_id": task_id, "deleted": True})
+
+
+@app.post("/v1/system/warmup")
+async def warmup_system():
+    try:
+        await babeldoc_assets.async_warmup()
+    except SystemExit as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Warmup failed") from exc
+    return JSONResponse({"status": "completed"})
+
+
+@app.post("/v1/system/offline-assets/generate")
+async def generate_offline_assets(directory: str | None = None):
+    output_dir = _resolve_optional_path(directory)
+    try:
+        await babeldoc_assets.generate_offline_assets_package_async(output_dir)
+    except SystemExit as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Failed to generate offline assets") from exc
+
+    assets_tag = babeldoc_assets.get_offline_assets_tag()
+    if output_dir is None:
+        output_path = babeldoc_assets.get_cache_file_path(
+            f"offline_assets_{assets_tag}.zip", "assets"
+        )
+    else:
+        output_path = output_dir / f"offline_assets_{assets_tag}.zip"
+
+    return JSONResponse(
+        {
+            "status": "completed",
+            "output_path": str(output_path),
+            "assets_tag": assets_tag,
+        }
+    )
+
+
+@app.post("/v1/system/offline-assets/restore")
+async def restore_offline_assets(path: str | None = None):
+    input_path = _resolve_optional_path(path)
+    try:
+        await babeldoc_assets.restore_offline_assets_package_async(input_path)
+    except SystemExit as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Failed to restore offline assets") from exc
+
+    effective_path: Path
+    if input_path is None:
+        assets_tag = babeldoc_assets.get_offline_assets_tag()
+        effective_path = babeldoc_assets.get_cache_file_path(
+            f"offline_assets_{assets_tag}.zip", "assets"
+        )
+    else:
+        effective_path = input_path
+
+    return JSONResponse(
+        {
+            "status": "completed",
+            "source_path": str(effective_path),
+        }
+    )
+
+
+@app.get("/v1/config/schema")
+async def get_config_schema():
+    schema = CLIEnvSettingsModel.model_json_schema()
+    defaults = DEFAULT_CLI_SETTINGS.model_dump(mode="json")
+    engines = [
+        {
+            "translate_engine_type": metadata.translate_engine_type,
+            "cli_flag_name": metadata.cli_flag_name,
+            "cli_detail_field_name": metadata.cli_detail_field_name,
+            "support_llm": metadata.support_llm,
+        }
+        for metadata in sorted(
+            TRANSLATION_ENGINE_METADATA_MAP.values(),
+            key=lambda m: m.translate_engine_type,
+        )
+    ]
+    return JSONResponse(
+        {
+            "schema": schema,
+            "defaults": defaults,
+            "translation_engines": engines,
+        }
+    )
 
 
 @app.get("/v1/health")

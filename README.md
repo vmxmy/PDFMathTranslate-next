@@ -92,6 +92,8 @@ Note that the computing resources of the demo are limited, so please avoid abusi
 2. [**Docker**](https://pdf2zh-next.com/getting-started/INSTALLATION_docker.html) <small>Recommand for Linux</small>
 3. [**uv** (a Python package manager)](https://pdf2zh-next.com/getting-started/INSTALLATION_uv.html) <small>Recommand for macOS</small>
 
+   Need a local one-click Docker startup? Run `./script/docker-up.sh` from the project root and open `http://localhost:7860/`.
+
 ---
 
 ### Usage
@@ -152,6 +154,53 @@ Environment variables:
 - `PDF2ZH_API_MAX_CONCURRENCY`: maximum concurrent translations (default `2`).
 - `PDF2ZH_API_QUEUE_MAXSIZE`: optional queue length limit (default unlimited).
 - `PDF2ZH_API_EXEC_TIMEOUT`: seconds to wait when acquiring a worker slot.
+- `PDF2ZH_API_WORKERS`: number of background queue workers (defaults to `PDF2ZH_API_MAX_CONCURRENCY`).
+
+#### Concurrent Processing Flow
+
+```mermaid
+flowchart LR
+    subgraph HTTP_API["FastAPI Server"]
+        direction TB
+        U[Client Request] --> |upload PDF| TQ[translate_pdf]
+        TQ --> |create TaskRecord| Q[TASK_QUEUE]
+        subgraph Lifespan
+            direction TB
+            style Lifespan fill:#f5f5f5,stroke:#ccc,stroke-width:1px
+            W1[_task_worker_loop #1]
+            Wn[_task_worker_loop #N]
+        end
+        Q --> |await get| W1
+        Q --> |await get| Wn
+        W1 --> |asyncio.create_task| RT1["_run_task(task1)"]
+        Wn --> |asyncio.create_task| RTn["_run_task(taskN)"]
+        RT1 --> |await acquire| SEM[SEMAPHORE (max=PDF2ZH_API_MAX_CONCURRENCY)]
+        RTn --> |await acquire| SEM
+        SEM --> |permit| EX1["_execute_task(task)"]
+    end
+
+    subgraph TaskLifecycle["Per-Task Execution"]
+        direction TB
+        EX1 --> |clone settings\nset output| CFG[settings.validate]
+        CFG --> |await| STRM["_stream_translation"]
+        STRM --> |async for events| HILO["do_translate_async_stream"]
+    end
+
+    subgraph Subprocess["Multiprocessing Layer"]
+        direction TB
+        HILO --> |spawn| SUBP["_translate_in_subprocess"]
+        SUBP --> PROC["multiprocessing.Process"]
+        PROC --> WRAP["_translate_wrapper"]
+        WRAP --> |babeldoc async loop| BABEL[BabelDOC]
+        BABEL --> |progress/error events| PIPE{{Pipe/Queue}}
+        PIPE --> |events back| STRM
+    end
+
+    STRM --> |finish/error| EX1
+    EX1 --> |release| SEM
+    EX1 --> |set event\nupdate state| STATE[TaskRecord]
+    STATE --> RESP[API Response/Result Polling]
+```
 
 `GET /v1/health` 返回服务状态与当前队列信息。Future API expansions will be documented here.
 

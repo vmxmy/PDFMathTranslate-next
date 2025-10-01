@@ -37,6 +37,22 @@ http://localhost:7860/
 
 > [!NOTE]
 > 如果在使用命令行时遇到任何问题，请参考 [如何使用 --> 命令行](./USAGE_commandline.md)。
+
+#### 本地一键启动
+
+如果已经克隆了仓库并希望基于本地源码构建镜像，可以执行：
+
+```bash
+./script/docker-up.sh
+```
+
+该脚本会完成以下步骤：
+
+- 基于当前源码构建 Docker 镜像
+- 在 `docker-data/` 下创建用于持久化配置、缓存和共享工作目录的文件夹
+- 在 `http://localhost:7860/` 启动 WebUI（可通过 `PDF2ZH_WEBUI_PORT=8080 ./script/docker-up.sh` 修改端口）
+
+在启动前设置翻译服务所需的环境变量（例如 `export PDF2ZH_SILICONFLOWFREE=true`）。启动后如需停止容器，可执行 `docker compose down`。
 <!-- 
 #### For docker deployment on cloud service:
 

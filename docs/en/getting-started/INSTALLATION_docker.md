@@ -37,6 +37,22 @@ http://localhost:7860/
 
 > [!NOTE]
 > If you encounter any issues during use command line, please refer to [Usage --> Command Line](./USAGE_commandline.md).
+
+#### Local one-click startup
+
+If you are working from a cloned repository and want to build the image locally, run:
+
+```bash
+./script/docker-up.sh
+```
+
+The helper script will:
+
+- build the Docker image from the project source
+- create persistent folders under `docker-data/` for configuration, cache, and shared workspace files
+- launch the WebUI on `http://localhost:7860/` (change the port with `PDF2ZH_WEBUI_PORT=8080 ./script/docker-up.sh`)
+
+Set translation service credentials by exporting `PDF2ZH_...` environment variables before starting (for example, `export PDF2ZH_SILICONFLOWFREE=true`). After the container is up you can stop it with `docker compose down`.
 <!-- 
 #### For docker deployment on cloud service:
 
