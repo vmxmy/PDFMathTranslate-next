@@ -168,7 +168,7 @@ class PDFSettings(BaseModel):
         default=None, description="Maximum pages per part for split translation"
     )
     translate_table_text: bool = Field(
-        default=True, description="Translate table text (experimental)"
+        default=False, description="Translate table text (experimental)"
     )
     skip_scanned_detection: bool = Field(
         default=False, description="Skip scanned detection"
