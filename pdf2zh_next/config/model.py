@@ -96,7 +96,7 @@ class TranslationSettings(BaseModel):
     output: str | None = Field(
         default=None, description="Output directory for translated files"
     )
-    qps: int = Field(default=4, description="QPS limit for translation service")
+    qps: int = Field(default=1, description="QPS limit for translation service")
     ignore_cache: bool = Field(default=False, description="Ignore translation cache")
     custom_system_prompt: str | None = Field(
         default=None,
@@ -110,7 +110,7 @@ class TranslationSettings(BaseModel):
         default=False, description="save automatically extracted glossary"
     )
     pool_max_workers: int | None = Field(
-        default=None,
+        default=1,
         description="Maximum number of workers for translation pool. If not set, will use qps as the number of workers",
     )
     no_auto_extract_glossary: bool = Field(

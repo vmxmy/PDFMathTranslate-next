@@ -65,7 +65,7 @@ class TestTranslationSettings:
         assert settings.lang_in == "en"
         assert settings.lang_out == "zh"
         assert settings.output is None
-        assert settings.qps == 4
+        assert settings.qps == 1
         assert settings.ignore_cache is False
 
     def test_custom_values(self, tmp_path):
