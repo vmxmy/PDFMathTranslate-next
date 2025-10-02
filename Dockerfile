@@ -23,9 +23,8 @@ RUN uv pip install --system --no-cache -r pyproject.toml && babeldoc --version &
 
 COPY . .
 
-# Calls for a random number to break the cahing of babeldoc upgrade
-# (https://stackoverflow.com/questions/35134713/disable-cache-for-specific-run-commands/58801213#58801213)
-ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
+# Break Docker cache for babeldoc upgrade using build timestamp
+ARG CACHEBUST=1
 
 RUN uv pip install --system --no-cache . && uv pip install --system --no-cache --compile-bytecode -U babeldoc "pymupdf<1.25.3" && babeldoc --version && babeldoc --warmup
 RUN pdf2zh --version
