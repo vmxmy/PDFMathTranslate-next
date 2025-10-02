@@ -37,6 +37,8 @@ from pdf2zh_next.config.translate_engine_model import (
 from pdf2zh_next.high_level import do_translate_async_stream
 
 logger = logging.getLogger(__name__)
+logging.getLogger("pdf2zh_next").setLevel(logging.DEBUG)
+logging.getLogger("babeldoc").setLevel(logging.DEBUG)
 
 
 class TaskState(str, Enum):
