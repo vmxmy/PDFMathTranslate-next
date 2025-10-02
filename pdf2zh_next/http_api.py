@@ -60,6 +60,7 @@ class TaskRecord:
     output_dir: Path
     result_event: dict[str, Any] | None = None
     error: str | None = None
+    logs: list[dict[str, Any]] = field(default_factory=list)
     event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
 
 
@@ -219,11 +220,21 @@ def _release_slot() -> None:
 async def _stream_translation(
     settings: SettingsModel,
     input_path: Path,
+    task: TaskRecord,
 ) -> dict[str, Any]:
     result_event: dict[str, Any] | None = None
 
     async for event in do_translate_async_stream(settings, input_path):
         event_type = event.get("type")
+        if event_type == "log":
+            log_entry = {
+                "timestamp": event.get("timestamp"),
+                "level": event.get("level"),
+                "message": event.get("message"),
+            }
+            task.logs.append(log_entry)
+            task.updated_at = datetime.now(timezone.utc)
+            continue
         if event_type == "error":
             error_message = event.get("error", "Unknown error")
             error_type = event.get("error_type", "TranslationError")
@@ -235,7 +246,8 @@ async def _stream_translation(
             )
             raise RuntimeError(error_message)
         if event_type == "finish":
-            result_event = event
+            result_event = dict(event)
+            result_event["logs"] = list(task.logs)
 
     if result_event is None:
         logger.error("Translation finished without finish event for %s", input_path)
@@ -306,6 +318,7 @@ def _serialize_task(task: TaskRecord) -> dict[str, Any]:
         "updated_at": task.updated_at.isoformat(),
         "error": task.error,
         "result_available": task.result_event is not None,
+        "logs": task.logs,
     }
 
 
@@ -324,7 +337,7 @@ async def _execute_task(task: TaskRecord) -> None:
             except ValueError as exc:
                 raise RuntimeError(str(exc)) from exc
 
-            result_event = await _stream_translation(settings, task.input_path)
+            result_event = await _stream_translation(settings, task.input_path, task)
             task.result_event = result_event
             task.state = TaskState.SUCCEEDED
         finally:

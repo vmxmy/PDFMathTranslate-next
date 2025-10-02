@@ -3,7 +3,7 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 WORKDIR /app
 
 
-EXPOSE 7860
+EXPOSE 8000
 
 ENV PYTHONUNBUFFERED=1
 
@@ -29,4 +29,13 @@ ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
 
 RUN uv pip install --system --no-cache . && uv pip install --system --no-cache --compile-bytecode -U babeldoc "pymupdf<1.25.3" && babeldoc --version && babeldoc --warmup
 RUN pdf2zh --version
-CMD ["pdf2zh", "--gui"]
+CMD [
+  "uv",
+  "run",
+  "uvicorn",
+  "pdf2zh_next.http_api:app",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8000"
+]

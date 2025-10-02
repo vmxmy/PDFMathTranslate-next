@@ -8,6 +8,7 @@ import queue
 import threading
 import traceback
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
 from functools import partial
 from logging.handlers import QueueHandler
 from pathlib import Path
@@ -283,6 +284,19 @@ async def _translate_in_subprocess(
                 if record is None:
                     logger.info("Listener stopped.")
                     break
+                log_entry = {
+                    "type": "log",
+                    "level": record.levelname,
+                    "message": record.getMessage(),
+                    "timestamp": datetime.fromtimestamp(
+                        record.created, tz=timezone.utc
+                    ).isoformat(),
+                }
+                try:
+                    cb.step_callback(log_entry)
+                except Exception as exc:  # noqa: BLE001
+                    if not cancel_event.is_set():
+                        logger.debug(f"Failed to forward log event: {exc}")
                 logger.handle(record)
             except KeyboardInterrupt:
                 logger.info("Listener stopped.")
