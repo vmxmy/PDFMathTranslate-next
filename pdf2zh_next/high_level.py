@@ -13,6 +13,23 @@ from functools import partial
 from logging.handlers import QueueHandler
 from pathlib import Path
 
+# Ensure onnxruntime stays on CPU to avoid GPU discovery when BabelDOC loads.
+try:
+    import onnxruntime
+
+    if not getattr(onnxruntime, "_pdf2zh_cpu_only", False):
+        def _pdf2zh_cpu_only_providers():
+            return ["CPUExecutionProvider"]
+
+        def _pdf2zh_cpu_only_device():
+            return "CPU"
+
+        onnxruntime.get_available_providers = _pdf2zh_cpu_only_providers
+        onnxruntime.get_device = _pdf2zh_cpu_only_device
+        onnxruntime._pdf2zh_cpu_only = True
+except ImportError:  # pragma: no cover - onnxruntime required in production
+    pass
+
 from babeldoc.format.pdf.high_level import async_translate as babeldoc_translate
 from babeldoc.format.pdf.translation_config import TranslationConfig as BabelDOCConfig
 from babeldoc.format.pdf.translation_config import (
