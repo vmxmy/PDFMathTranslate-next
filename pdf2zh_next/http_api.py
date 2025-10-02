@@ -207,23 +207,39 @@ if UPLOAD_CHUNK_SIZE < 1:
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):  # noqa: ARG001
-    # 启动时预加载资源，减少首次请求延迟
-    logger.info("Starting application and preloading resources...")
+    # 快速启动：只初始化必要组件
+    logger.info("Starting application...")
 
-    global WORKER_TASKS
-    WORKER_TASKS = [
-        asyncio.create_task(_task_worker_loop()) for _ in range(WORKER_COUNT)
-    ]
-    logger.info("Task workers started (count=%d)", WORKER_COUNT)
+    # 延迟启动工作线程，让 FastAPI 先完全启动
+    async def start_workers_delayed():
+        await asyncio.sleep(2)  # 给 FastAPI 2 秒完成启动
+        global WORKER_TASKS
+        WORKER_TASKS = [
+            asyncio.create_task(_task_worker_loop()) for _ in range(WORKER_COUNT)
+        ]
+        logger.info("Task workers started (count=%d)", WORKER_COUNT)
 
-    # 异步预热 BabelDOC 资源，不阻塞应用启动
-    warmup_task = asyncio.create_task(babeldoc_assets.async_warmup())
+    worker_starter = asyncio.create_task(start_workers_delayed())
+
+    # 延迟预热 BabelDOC 资源，不阻塞应用启动
+    async def warmup_delayed():
+        await asyncio.sleep(5)  # 给应用 5 秒完成基础启动
+        try:
+            await babeldoc_assets.async_warmup()
+            logger.info("BabelDOC resources warmed up")
+        except Exception as exc:
+            logger.warning("BabelDOC warmup failed: %s", exc)
+
+    warmup_task = asyncio.create_task(warmup_delayed())
 
     try:
         yield
     finally:
         # 清理资源
+        worker_starter.cancel()
         warmup_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_starter
         with contextlib.suppress(asyncio.CancelledError):
             await warmup_task
 
@@ -541,6 +557,10 @@ async def translate_pdf(
     wait: bool = False,
     wait_timeout: float | None = None,
 ):
+    # 检查工作线程是否已启动
+    if not WORKER_TASKS:
+        raise HTTPException(status_code=503, detail="Application is still starting up, please try again in a moment")
+
     if QUEUE_MAX_SIZE and _get_active_tasks_count() >= QUEUE_MAX_SIZE:
         raise HTTPException(status_code=503, detail="Queue is full")
 

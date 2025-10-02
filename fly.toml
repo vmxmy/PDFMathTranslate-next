@@ -26,9 +26,9 @@ primary_region = 'sin'
   processes = ['app']
 
   [[http_service.checks]]
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "10s"
+    interval = "60s"
+    timeout = "10s"
+    grace_period = "30s"
     method = "GET"
     path = "/v1/health"
 
