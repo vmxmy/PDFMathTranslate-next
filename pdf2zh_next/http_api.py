@@ -195,6 +195,15 @@ WORKER_TASKS: list[asyncio.Task] = []
 # Track active asyncio tasks so we can await completion on shutdown
 ACTIVE_TASKS: set[asyncio.Task[None]] = set()
 
+# Limit the amount of data kept in RAM when persisting uploads to disk.
+UPLOAD_CHUNK_SIZE_RAW = os.getenv("PDF2ZH_API_UPLOAD_CHUNK_SIZE", str(1 << 20))
+try:
+    UPLOAD_CHUNK_SIZE = int(UPLOAD_CHUNK_SIZE_RAW)
+except ValueError as exc:  # noqa: BLE001
+    raise RuntimeError("PDF2ZH_API_UPLOAD_CHUNK_SIZE must be an integer") from exc
+if UPLOAD_CHUNK_SIZE < 1:
+    raise RuntimeError("PDF2ZH_API_UPLOAD_CHUNK_SIZE must be >= 1")
+
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):  # noqa: ARG001
@@ -420,6 +429,22 @@ def _build_zip_payload(result_event: dict[str, Any]) -> bytes:
     return buffer.getvalue()
 
 
+async def _persist_upload(upload: UploadFile, destination: Path) -> int:
+    total_bytes = 0
+    try:
+        with destination.open("wb") as output_file:
+            while True:
+                chunk = await upload.read(UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                output_file.write(chunk)
+                total_bytes += len(chunk)
+    finally:
+        with contextlib.suppress(Exception):
+            await upload.close()
+    return total_bytes
+
+
 def _serialize_task(task: TaskRecord) -> dict[str, Any]:
     # 计算进度信息
     progress_info = calculate_translation_progress(task.logs)
@@ -522,11 +547,10 @@ async def translate_pdf(
     output_dir = tmp_dir / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    content = await file.read()
-    if not content:
+    bytes_written = await _persist_upload(file, input_path)
+    if bytes_written == 0:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
-    input_path.write_bytes(content)
 
     settings = settings.clone()
     settings.basic.input_files = set()
