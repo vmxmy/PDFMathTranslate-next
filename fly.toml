@@ -11,6 +11,9 @@ primary_region = 'sin'
   PDF2ZH_API_WORKERS = '1'
   PDF2ZH_POOL_MAX_WORKERS = '1'
   PDF2ZH_QPS = '1'
+  ORT_TENSORRT_ENGINE_CACHE_ENABLE = '0'
+  CUDA_VISIBLE_DEVICES = ''
+  NVIDIA_VISIBLE_DEVICES = ''
 
 [build]
 
@@ -21,6 +24,13 @@ primary_region = 'sin'
   auto_start_machines = true
   min_machines_running = 0
   processes = ['app']
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/v1/health"
 
 [[vm]]
   memory = '1gb'

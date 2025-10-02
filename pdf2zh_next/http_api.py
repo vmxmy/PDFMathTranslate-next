@@ -207,14 +207,26 @@ if UPLOAD_CHUNK_SIZE < 1:
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):  # noqa: ARG001
+    # 启动时预加载资源，减少首次请求延迟
+    logger.info("Starting application and preloading resources...")
+
     global WORKER_TASKS
     WORKER_TASKS = [
         asyncio.create_task(_task_worker_loop()) for _ in range(WORKER_COUNT)
     ]
     logger.info("Task workers started (count=%d)", WORKER_COUNT)
+
+    # 异步预热 BabelDOC 资源，不阻塞应用启动
+    warmup_task = asyncio.create_task(babeldoc_assets.async_warmup())
+
     try:
         yield
     finally:
+        # 清理资源
+        warmup_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await warmup_task
+
         for worker in WORKER_TASKS:
             worker.cancel()
         for worker in WORKER_TASKS:
