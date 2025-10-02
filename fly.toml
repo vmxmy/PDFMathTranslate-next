@@ -14,6 +14,16 @@ primary_region = 'sin'
   ORT_TENSORRT_ENGINE_CACHE_ENABLE = '0'
   CUDA_VISIBLE_DEVICES = ''
   NVIDIA_VISIBLE_DEVICES = ''
+  # Disable ONNX Runtime GPU detection completely
+  ORT_DISABLE_ALL = '1'
+  ORT_CPU_ONLY = '1'
+  HIP_VISIBLE_DEVICES = ''
+  ONEAPI_DEVICE_SELECTOR = ''
+  ZES_ENABLE_SYSMAN = '0'
+  # Reduce logging from ML libraries
+  TOKENIZERS_PARALLELISM = 'false'
+  TRANSFORMERS_OFFLINE = '1'
+  HF_HUB_OFFLINE = '1'
 
 [build]
 
