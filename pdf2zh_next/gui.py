@@ -8,7 +8,6 @@ import tempfile
 import typing
 import uuid
 from pathlib import Path
-from string import Template
 
 import chardet
 import gradio as gr
@@ -629,8 +628,9 @@ def _build_translate_settings(
 
     # Add custom prompt if provided
     if prompt:
-        # This might need adjustment based on how prompt is handled in the new system
-        translate_settings.custom_prompt = Template(prompt)
+        translate_settings.translation.custom_prompt = prompt
+    else:
+        translate_settings.translation.custom_prompt = None
 
     # Add custom system prompt if provided
     if custom_system_prompt_input:

@@ -78,6 +78,12 @@ class GUISettings(BaseModel):
 class TranslationSettings(BaseModel):
     """Translation related settings"""
 
+    custom_prompt: str | None = Field(
+        default=None,
+        description=(
+            "Additional user instructions appended to the default translation prompt"
+        ),
+    )
     min_text_length: int = Field(
         default=5, description="Minimum text length to translate"
     )
