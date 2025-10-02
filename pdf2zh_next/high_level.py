@@ -362,6 +362,7 @@ async def _translate_in_subprocess(
     )
     translate_process.start()
     cancel_flag = False
+    completed_successfully = False
     try:
         async for event in cb:
             # Check for errors before yielding events
@@ -369,7 +370,14 @@ async def _translate_in_subprocess(
                 # Let AsyncCallback.__anext__ raise the error
                 # This will break out of the loop
                 break
-            yield event.args[0]
+            payload = event.args[0]
+            yield payload
+            try:
+                if isinstance(payload, dict) and payload.get("type") == "finish":
+                    completed_successfully = True
+                    break
+            except Exception:  # noqa: BLE001
+                pass
     except asyncio.CancelledError:
         cancel_flag = True
         logger.info("Process Translation cancelled")
@@ -378,10 +386,11 @@ async def _translate_in_subprocess(
         logger.info("KeyboardInterrupt received in main process")
     finally:
         logger.debug("send cancel message")
-        try:
-            pipe_cancel_message_send.send(True)
-        except (OSError, BrokenPipeError) as e:
-            logger.debug(f"Failed to send cancel message: {e}")
+        if not completed_successfully:
+            try:
+                pipe_cancel_message_send.send(True)
+            except (OSError, BrokenPipeError) as e:
+                logger.debug(f"Failed to send cancel message: {e}")
         logger.debug("close pipe cancel message")
         try:
             pipe_cancel_message_send.close()
@@ -393,8 +402,9 @@ async def _translate_in_subprocess(
         except (OSError, BrokenPipeError) as e:
             logger.debug(f"Failed to send None to pipe_progress_send: {e}")
 
-        logger.debug("set cancel event")
-        cancel_event.set()
+        if not completed_successfully:
+            logger.debug("set cancel event")
+            cancel_event.set()
 
         # 关闭接收端管道以中断 recv_thread 中的阻塞接收
         try:
@@ -404,26 +414,38 @@ async def _translate_in_subprocess(
             logger.debug(f"Failed to close pipe_progress_recv: {e}")
 
         # 终止子进程，使用超时防止卡住
-        translate_process.join(timeout=10)
+        join_timeout = 10
+        if completed_successfully and not cancel_flag:
+            join_timeout = 30
+        translate_process.join(timeout=join_timeout)
         logger.debug("join translate process")
         if translate_process.is_alive():
-            logger.info("Translate process did not finish in time, terminate it")
-            translate_process.terminate()
-            translate_process.join(timeout=5)
-        if translate_process.is_alive():
-            logger.info("Translate process did not finish in time, killing it")
-            try:
-                translate_process.kill()
-                translate_process.join(timeout=2)
-                logger.info("Translate process killed")
-            except Exception as e:
-                logger.exception(f"Error killing translate process: {e}")
+            if completed_successfully and not cancel_flag:
+                logger.info("Translate process still running after completion, allowing extra time")
+                translate_process.join(timeout=30)
+            if translate_process.is_alive():
+                logger.info("Translate process did not finish in time, terminate it")
+                translate_process.terminate()
+                translate_process.join(timeout=5)
+            if translate_process.is_alive():
+                logger.info("Translate process did not finish in time, killing it")
+                try:
+                    translate_process.kill()
+                    translate_process.join(timeout=2)
+                    logger.info("Translate process killed")
+                except Exception as e:
+                    logger.exception(f"Error killing translate process: {e}")
 
         # 等待接收线程，使用超时防止卡住
         logger.debug("join recv thread")
         recv_t.join(timeout=2)
         if recv_t.is_alive():
             logger.warning("Recv thread did not finish in time")
+
+        try:
+            logger_queue.put(None)
+        except Exception as e:
+            logger.debug(f"Failed to send sentinel to logger_queue: {e}")
 
         # 等待日志线程，使用超时防止卡住
         log_t.join(timeout=1)
@@ -432,13 +454,12 @@ async def _translate_in_subprocess(
 
         # 尝试关闭日志队列
         try:
-            logger_queue.put(None)
             logger_queue.close()
         except Exception as e:
             logger.debug(f"Failed to close logger_queue: {e}")
 
         logger.debug("translate process exit code: %s", translate_process.exitcode)
-        if not cancel_flag:
+        if not cancel_flag and not completed_successfully:
             # Check if the process crashed but no error was captured through IPC
             if translate_process.exitcode not in (0, None) and not cb.has_error():
                 error = SubprocessCrashError(
