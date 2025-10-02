@@ -48,6 +48,113 @@ class TaskState(str, Enum):
     FAILED = "failed"
 
 
+def parse_stage_summary_from_logs(logs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """从 logs 数组中提取 stage_summary 事件"""
+    stage_summaries = []
+
+    for log_entry in logs:
+        # 查找包含 stage_summary 的 DEBUG 消息
+        if log_entry.get(
+            "level"
+        ) == "DEBUG" and "sub process generate event" in log_entry.get("message", ""):
+            # 解析消息中的 event JSON
+            message = log_entry["message"]
+            # 提取 JSON 部分
+            json_start = message.find("{")
+            if json_start != -1:
+                try:
+                    event_data = json.loads(message[json_start:])
+                    if event_data.get("type") == "stage_summary":
+                        stage_summaries.append(event_data)
+                except json.JSONDecodeError:
+                    continue
+
+    return stage_summaries
+
+
+def calculate_translation_progress(logs: list[dict[str, Any]]) -> dict[str, Any]:
+    """计算翻译进度信息"""
+    if not logs:
+        return {
+            "overall_progress": 0.0,
+            "current_stage": None,
+            "stage_summaries": [],
+            "estimated_total_progress": 0.0,
+            "stage_current": None,
+            "stage_total": None,
+            "part_index": None,
+            "total_parts": None,
+        }
+
+    # 解析 stage_summary 事件
+    stage_summaries = parse_stage_summary_from_logs(logs)
+
+    # 查找最新的进度更新事件
+    latest_progress_event = None
+    for log_entry in reversed(logs):
+        if log_entry.get(
+            "level"
+        ) == "DEBUG" and "sub process generate event" in log_entry.get("message", ""):
+            message = log_entry["message"]
+            json_start = message.find("{")
+            if json_start != -1:
+                try:
+                    event_data = json.loads(message[json_start:])
+
+                    if event_data.get("type") in [
+                        "progress_update",
+                        "progress_start",
+                        "progress_end",
+                    ]:
+                        latest_progress_event = event_data
+                        break
+
+                except json.JSONDecodeError:
+                    continue
+
+    # 如果找到了进度事件，使用其信息
+    if latest_progress_event:
+        return {
+            "overall_progress": latest_progress_event.get("overall_progress", 0.0),
+            "current_stage": latest_progress_event.get("stage"),
+            "stage_summaries": stage_summaries,
+            "estimated_total_progress": sum(
+                stage.get("percent", 0) for stage in stage_summaries
+            ),
+            "stage_current": latest_progress_event.get("stage_current"),
+            "stage_total": latest_progress_event.get("stage_total"),
+            "part_index": latest_progress_event.get("part_index"),
+            "total_parts": latest_progress_event.get("total_parts"),
+        }
+
+    # 如果没有找到进度事件，但找到了 stage_summary，尝试估算进度
+    if stage_summaries:
+        return {
+            "overall_progress": 0.0,  # 没有实时进度信息
+            "current_stage": "初始化中",
+            "stage_summaries": stage_summaries,
+            "estimated_total_progress": sum(
+                stage.get("percent", 0) for stage in stage_summaries
+            ),
+            "stage_current": None,
+            "stage_total": None,
+            "part_index": None,
+            "total_parts": None,
+        }
+
+    # 默认返回无进度信息
+    return {
+        "overall_progress": 0.0,
+        "current_stage": None,
+        "stage_summaries": [],
+        "estimated_total_progress": 0.0,
+        "stage_current": None,
+        "stage_total": None,
+        "part_index": None,
+        "total_parts": None,
+    }
+
+
 @dataclass
 class TaskRecord:
     id: str
@@ -73,9 +180,7 @@ if MAX_CONCURRENCY < 1:
 
 QUEUE_MAX_SIZE = int(os.getenv("PDF2ZH_API_QUEUE_MAXSIZE", "0"))
 EXEC_TIMEOUT_RAW = os.getenv("PDF2ZH_API_EXEC_TIMEOUT")
-EXEC_TIMEOUT = (
-    None if EXEC_TIMEOUT_RAW in (None, "") else float(EXEC_TIMEOUT_RAW)
-)
+EXEC_TIMEOUT = None if EXEC_TIMEOUT_RAW in (None, "") else float(EXEC_TIMEOUT_RAW)
 SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENCY)
 TASKS: dict[str, TaskRecord] = {}
 TASK_QUEUE: asyncio.Queue[TaskRecord] = asyncio.Queue()
@@ -90,10 +195,13 @@ WORKER_TASKS: list[asyncio.Task] = []
 # Track active asyncio tasks so we can await completion on shutdown
 ACTIVE_TASKS: set[asyncio.Task[None]] = set()
 
+
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):  # noqa: ARG001
     global WORKER_TASKS
-    WORKER_TASKS = [asyncio.create_task(_task_worker_loop()) for _ in range(WORKER_COUNT)]
+    WORKER_TASKS = [
+        asyncio.create_task(_task_worker_loop()) for _ in range(WORKER_COUNT)
+    ]
     logger.info("Task workers started (count=%d)", WORKER_COUNT)
     try:
         yield
@@ -111,7 +219,9 @@ async def _lifespan(app: FastAPI):  # noqa: ARG001
             TASKS.pop(task_id, None)
 
 
-app = FastAPI(title="PDFMathTranslate-next API", version=__version__, lifespan=_lifespan)
+app = FastAPI(
+    title="PDFMathTranslate-next API", version=__version__, lifespan=_lifespan
+)
 
 
 def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
@@ -119,11 +229,7 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
     for key, value in base.items():
         merged[key] = value
     for key, value in overrides.items():
-        if (
-            key in merged
-            and isinstance(merged[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
             merged[key] = _deep_merge(merged[key], value)
         else:
             merged[key] = value
@@ -200,7 +306,9 @@ def _resolve_optional_path(raw_path: str | None) -> Path | None:
     try:
         return Path(raw_path).expanduser().resolve()
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"Invalid path: {raw_path}") from exc
+        raise HTTPException(
+            status_code=400, detail=f"Invalid path: {raw_path}"
+        ) from exc
 
 
 async def _acquire_slot(timeout: float | None) -> None:
@@ -303,7 +411,9 @@ def _build_zip_payload(result_event: dict[str, Any]) -> bytes:
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+        archive.writestr(
+            "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2)
+        )
         for arc_name, path in attachments.items():
             archive.write(path, arcname=arc_name)
     buffer.seek(0)
@@ -311,6 +421,9 @@ def _build_zip_payload(result_event: dict[str, Any]) -> bytes:
 
 
 def _serialize_task(task: TaskRecord) -> dict[str, Any]:
+    # 计算进度信息
+    progress_info = calculate_translation_progress(task.logs)
+
     return {
         "task_id": task.id,
         "state": task.state.value,
@@ -319,6 +432,7 @@ def _serialize_task(task: TaskRecord) -> dict[str, Any]:
         "error": task.error,
         "result_available": task.result_event is not None,
         "logs": task.logs,
+        "progress": progress_info,
     }
 
 
@@ -376,7 +490,11 @@ def _cleanup_task(task: TaskRecord) -> None:
 
 
 def _get_active_tasks_count() -> int:
-    return sum(1 for task in TASKS.values() if task.state in {TaskState.QUEUED, TaskState.RUNNING})
+    return sum(
+        1
+        for task in TASKS.values()
+        if task.state in {TaskState.QUEUED, TaskState.RUNNING}
+    )
 
 
 @app.post("/v1/translate")
@@ -460,8 +578,7 @@ async def translate_pdf(
 
     return JSONResponse(
         status_code=202,
-        content=
-        {
+        content={
             "task_id": task_id,
             "status": task.state.value,
             "status_url": f"/v1/tasks/{task_id}",
@@ -476,6 +593,26 @@ async def get_task(task_id: str):
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return _serialize_task(task)
+
+
+@app.get("/v1/tasks/{task_id}/progress")
+async def get_task_progress(task_id: str):
+    """获取任务的详细进度信息"""
+    task = TASKS.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 计算进度信息
+    progress_info = calculate_translation_progress(task.logs)
+
+    return JSONResponse(
+        {
+            "task_id": task_id,
+            "state": task.state.value,
+            "progress": progress_info,
+            "updated_at": task.updated_at.isoformat(),
+        }
+    )
 
 
 @app.get("/v1/tasks/{task_id}/result")
@@ -496,7 +633,9 @@ async def get_task_result(task_id: str, cleanup: bool = False):
         TASKS.pop(task_id, None)
 
     headers = {"Content-Disposition": f"attachment; filename=translation-{task_id}.zip"}
-    return StreamingResponse(io.BytesIO(zip_payload), media_type="application/zip", headers=headers)
+    return StreamingResponse(
+        io.BytesIO(zip_payload), media_type="application/zip", headers=headers
+    )
 
 
 @app.delete("/v1/tasks/{task_id}")
@@ -525,7 +664,9 @@ async def generate_offline_assets(directory: str | None = None):
     try:
         await babeldoc_assets.generate_offline_assets_package_async(output_dir)
     except SystemExit as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail="Failed to generate offline assets") from exc
+        raise HTTPException(
+            status_code=500, detail="Failed to generate offline assets"
+        ) from exc
 
     assets_tag = babeldoc_assets.get_offline_assets_tag()
     if output_dir is None:
@@ -550,7 +691,9 @@ async def restore_offline_assets(path: str | None = None):
     try:
         await babeldoc_assets.restore_offline_assets_package_async(input_path)
     except SystemExit as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail="Failed to restore offline assets") from exc
+        raise HTTPException(
+            status_code=500, detail="Failed to restore offline assets"
+        ) from exc
 
     effective_path: Path
     if input_path is None:
