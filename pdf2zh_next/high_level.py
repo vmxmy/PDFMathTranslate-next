@@ -30,6 +30,8 @@ try:
 except ImportError:  # pragma: no cover - onnxruntime required in production
     pass
 
+from babeldoc.docvision.base_doclayout import DocLayoutModel
+from babeldoc.docvision.base_doclayout import YoloResult
 from babeldoc.format.pdf.high_level import async_translate as babeldoc_translate
 from babeldoc.format.pdf.translation_config import TranslationConfig as BabelDOCConfig
 from babeldoc.format.pdf.translation_config import (
@@ -123,6 +125,24 @@ class SubprocessCrashError(TranslationError):
 
 
 logger = logging.getLogger(__name__)
+
+
+class LLMOnlyDocLayoutModel(DocLayoutModel):
+    """Doc layout stub that skips ONNX models when only LLM translation is needed."""
+
+    def __init__(self):
+        self._stride = 32
+
+    @property
+    def stride(self) -> int:
+        return self._stride
+
+    def handle_document(self, pages, mupdf_doc, translate_config, save_debug_image):
+        for page in pages:
+            yield page, YoloResult(names=[], boxes=[])
+
+
+LLM_ONLY_DOC_LAYOUT_MODEL = LLMOnlyDocLayoutModel()
 
 
 def _translate_wrapper(
@@ -487,7 +507,7 @@ def create_babeldoc_config(settings: SettingsModel, file: Path) -> BabelDOCConfi
         font=None,
         pages=settings.pdf.pages,
         output_dir=settings.translation.output,
-        doc_layout_model=None,
+        doc_layout_model=LLM_ONLY_DOC_LAYOUT_MODEL,
         translator=translator,
         debug=settings.basic.debug,
         lang_in=settings.translation.lang_in,
