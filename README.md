@@ -53,7 +53,7 @@ For details on how to contribute, please consult the [Contribution Guide](https:
 
 <h2 id="updates">Updates</h2>
 
-- [Feb. 12, 2026] HTTP API now supports异步队列任务、状态查询与按需下载翻译结果（by [@vmxmy](https://github.com/vmxmy))
+- [Feb. 12, 2026] HTTP API now supports 异步队列任务、状态查询与按需下载翻译结果（by [@vmxmy](https://github.com/vmxmy))
 - [Jun. 4, 2025] The project is renamed and move to [PDFMathTranslate/PDFMathTranslate-next](https://github.com/PDFMathTranslate/PDFMathTranslate-next) (by [@awwaawwa](https://github.com/awwaawwa))
 - [Mar. 3, 2025] Experimental support for the new backend [BabelDOC](https://github.com/funstory-ai/BabelDOC) WebUI added as an experimental option (by [@awwaawwa](https://github.com/awwaawwa))
 - [Feb. 22 2025] Better release CI and well-packaged windows-amd64 exe (by [@awwaawwa](https://github.com/awwaawwa))
