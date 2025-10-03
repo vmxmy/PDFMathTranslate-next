@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Read(//var/run/**)",
+      "Bash(systemctl:*)",
+      "Bash(launchctl:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(pip show:*)",
+      "Bash(flyctl:*)",
+      "mcp__arjunkmrm-perplexity-search__search",
+      "Bash(docker:*)",
+      "Bash(sudo launchctl:*)",
+      "Bash(killall:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
