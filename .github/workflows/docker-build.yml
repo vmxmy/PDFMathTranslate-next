@@ -252,11 +252,14 @@ jobs:
 
       - name: Inspect images
         run: |
-          for image in ${{ steps.prepare-images.outputs.images }}; do
+          while IFS= read -r image; do
+            [ -z "$image" ] && continue
             echo "=== Inspecting $image ==="
             if [ "${{ inputs.is_release }}" == "true" ]; then
-              docker buildx imagetools inspect $image:${{ inputs.version }}
+              docker buildx imagetools inspect "$image:${{ inputs.version }}"
             else
-              docker buildx imagetools inspect $image:dev
+              docker buildx imagetools inspect "$image:dev"
             fi
-          done
+          done <<'EOF'
+${{ steps.prepare-images.outputs.images }}
+EOF
