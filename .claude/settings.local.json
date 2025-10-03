@@ -14,7 +14,8 @@
       "Bash(sudo launchctl:*)",
       "Bash(killall:*)",
       "Bash(curl:*)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(ruff check:*)"
     ],
     "deny": [],
     "ask": []

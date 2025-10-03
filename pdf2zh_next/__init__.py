@@ -1,11 +1,5 @@
 import warnings
 
-warnings.filterwarnings(
-    "ignore",
-    message=r"builtin type (SwigPyPacked|SwigPyObject|swigvarlink) has no __module__ attribute",
-    category=DeprecationWarning,
-)
-
 from pdf2zh_next.config import AnythingLLMSettings
 from pdf2zh_next.config import AzureOpenAISettings
 from pdf2zh_next.config import AzureSettings
@@ -37,6 +31,13 @@ from pdf2zh_next.high_level import do_translate_file
 from pdf2zh_next.high_level import do_translate_file_async
 
 # from pdf2zh_next.high_level import translate, translate_stream
+
+# Configure warnings after imports
+warnings.filterwarnings(
+    "ignore",
+    message=r"builtin type (SwigPyPacked|SwigPyObject|swigvarlink) has no __module__ attribute",
+    category=DeprecationWarning,
+)
 
 __version__ = "2.6.4"
 __author__ = "Byaidu, awwaawwa"
