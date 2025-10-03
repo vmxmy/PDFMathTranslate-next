@@ -22,10 +22,31 @@ on:
         type: boolean
         default: true
         description: 'Whether to push to ACR'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0 or latest)'
+        required: true
+        default: 'latest'
+      is_release:
+        description: 'Whether this is a release build'
+        required: false
+        type: boolean
+        default: false
+      babeldoc_version:
+        description: 'BabelDOC version to use (optional)'
+        required: false
+        type: string
+        default: ''
+      push_to_acr:
+        description: 'Push to Aliyun ACR'
+        required: false
+        type: boolean
+        default: true
 
 env:
   REGISTRY: ghcr.io
-  REPO_LOWER: ${{ github.repository_owner }}/${{ github.event.repository.name }}
+  REPO_LOWER: ${{ github.repository }}
   GHCR_REPO: ghcr.io/${{ github.repository }}
   DOCKERHUB_REPO: kulangsu/pdf2zh
   ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
@@ -45,7 +66,7 @@ jobs:
     steps:
       - name: Prepare environment
         run: |
-          platform=${{ matrix.platform }}
+          platform=linux/amd64
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
           printf 'GHCR_REPO_LOWER=%s\n' "$(echo "${GHCR_REPO}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
           printf 'DOCKERHUB_REPO_LOWER=%s\n' "$(echo "${DOCKERHUB_REPO}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
@@ -80,6 +101,7 @@ jobs:
             type=raw,value=${{ inputs.version }}-babeldoc-v${{ inputs.babeldoc_version }},enable=${{ inputs.babeldoc_version != '' }}
 
       - name: Login to Docker Hub
+        if: secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != ''
         uses: docker/login-action@v3
         with:
           registry: docker.io
@@ -87,6 +109,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GHCR
+        if: env.GHCR_REPO != ''
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -106,6 +129,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,"name=${{ steps.prepare-images.outputs.images }}",push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
@@ -141,6 +165,30 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GHCR
+        if: env.GHCR_REPO != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Aliyun ACR
+        if: inputs.push_to_acr == true && env.ACR_REGISTRY != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Prepare image list
         id: prepare-images
