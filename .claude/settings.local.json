@@ -15,7 +15,16 @@
       "Bash(killall:*)",
       "Bash(curl:*)",
       "Bash(python3 -)",
-      "Bash(ruff check:*)"
+      "Bash(ruff check:*)",
+      "Bash(git checkout:*)",
+      "Bash(python3:*)",
+      "Bash(find:*)",
+      "Bash(xargs:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv run:*)",
+      "Bash(mv:*)",
+      "Bash(mkdir:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []
