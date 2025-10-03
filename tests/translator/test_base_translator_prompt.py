@@ -44,7 +44,11 @@ def test_prompt_without_custom_prompt():
 
     assert len(prompt_messages) == 1
     content = prompt_messages[0]["content"]
-    assert "You are a professional,authentic machine translation engine." in content
+    assert (
+        "You are a professional translation engine specialized in technical"
+        in content
+    )
+    assert "regulatory documents for en → zh" in content
     assert "Additional instructions" not in content
     assert content.rstrip().endswith("hello")
 
