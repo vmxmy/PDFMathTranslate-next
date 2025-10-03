@@ -96,7 +96,12 @@ jobs:
       - name: Prepare image list
         id: prepare-images
         run: |
-          images=("${DOCKERHUB_REPO_LOWER}" "${GHCR_REPO_LOWER}")
+          images=("${GHCR_REPO_LOWER}")
+
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            images=("${DOCKERHUB_REPO_LOWER}" "${images[@]}")
+          fi
+
           if [ -n "${ACR_REPO_LOWER}" ] && [ "${{ inputs.push_to_acr }}" == "true" ]; then
             images+=("${ACR_REPO_LOWER}")
           fi
@@ -104,12 +109,6 @@ jobs:
           {
             echo 'images<<EOF'
             printf '%s\n' "${images[@]}"
-            echo 'EOF'
-
-            echo 'outputs<<EOF'
-            for image in "${images[@]}"; do
-              printf 'type=image,name=%s,push-by-digest=true,name-canonical=true,push=true\n' "$image"
-            done
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
@@ -164,7 +163,7 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: ${{ steps.prepare-images.outputs.outputs }}
+          push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
           context: .
@@ -235,7 +234,12 @@ jobs:
       - name: Prepare image list
         id: prepare-images
         run: |
-          images=("${DOCKERHUB_REPO_LOWER}" "${GHCR_REPO_LOWER}")
+          images=("${GHCR_REPO_LOWER}")
+
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            images=("${DOCKERHUB_REPO_LOWER}" "${images[@]}")
+          fi
+
           if [ -n "${ACR_REPO_LOWER}" ]; then
             images+=("${ACR_REPO_LOWER}")
           fi
