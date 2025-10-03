@@ -401,12 +401,12 @@ jobs:
       - build
       - publish-to-pypi
       - publish-to-testpypi
-      - merge-docker-image
+      - build-docker-image
       - test-win64-exe
     if: |
-      always() && needs.check-repository.outputs.is_main_repo == 'true' && 
+      always() && needs.check-repository.outputs.is_main_repo == 'true' &&
       (needs.publish-to-pypi.result == 'success' || needs.publish-to-testpypi.result == 'success') &&
-      needs.merge-docker-image.result == 'success' &&
+      needs.build-docker-image.result == 'success' &&
       needs.test-win64-exe.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -432,10 +432,9 @@ jobs:
 
 
   upload-release:
-    needs: [build, release-draft, check-repository, build-win64-exe]
+    needs: [release-draft, build-win64-exe]
     runs-on: ubuntu-latest
-    if: always() && needs.check-repository.outputs.is_main_repo == 'true' &&
-      needs.release-draft.result == 'success'
+    if: always() && needs.release-draft.result == 'success'
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
