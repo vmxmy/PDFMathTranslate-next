@@ -251,8 +251,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Inspect images
+        env:
+          IMAGES: ${{ steps.prepare-images.outputs.images }}
         run: |
-          while IFS= read -r image; do
+          printf '%s\n' "$IMAGES" | while IFS= read -r image; do
             [ -z "$image" ] && continue
             echo "=== Inspecting $image ==="
             if [ "${{ inputs.is_release }}" == "true" ]; then
@@ -260,6 +262,4 @@ jobs:
             else
               docker buildx imagetools inspect "$image:dev"
             fi
-          done <<'EOF'
-${{ steps.prepare-images.outputs.images }}
-EOF
+          done
