@@ -33,15 +33,8 @@ env:
 
 jobs:
   build-and-push:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+      # 单平台构建，避免 ARM64 等待问题
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -112,11 +105,11 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          platforms: ${{ matrix.platform }}
+          platforms: linux/amd64
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,"name=${{ steps.prepare-images.outputs.images }}",push-by-digest=true,name-canonical=true,push=true
-          cache-from: ${{ matrix.platform == 'linux/amd64' && 'type=gha' || '' }}
-          cache-to: ${{ matrix.platform == 'linux/amd64' && 'type=gha,mode=max' || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           context: .
 
       - name: Export digest
@@ -133,11 +126,9 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  merge-manifests:
+  inspect-images:
     runs-on: ubuntu-latest
     needs: build-and-push
-    permissions:
-      packages: write
 
     steps:
       - name: Prepare environment
@@ -151,14 +142,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Download digests
-        uses: actions/download-artifact@v5
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: digests-*
-          merge-multiple: true
-
-      - name: Prepare image list for manifest
+      - name: Prepare image list
         id: prepare-images
         run: |
           IMAGES="${DOCKERHUB_REPO_LOWER} ${GHCR_REPO_LOWER}"
@@ -166,28 +150,6 @@ jobs:
             IMAGES="$IMAGES ${ACR_REPO_LOWER}"
           fi
           echo "images=$IMAGES" >> $GITHUB_OUTPUT
-
-      - name: Docker meta for manifest
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.prepare-images.outputs.images }}
-          tags: |
-            type=raw,value=dev,enable=${{ !inputs.is_release }}
-            type=raw,value=${{ inputs.version }},enable=${{ inputs.is_release }}
-            type=raw,value=latest,enable=${{ inputs.is_release }}
-            type=raw,value=${{ inputs.version }}-babeldoc-v${{ inputs.babeldoc_version }},enable=${{ inputs.babeldoc_version != '' }}
-
-      - name: Create manifest list and push
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          # Create manifests for each registry
-          for image in ${{ steps.prepare-images.outputs.images }}; do
-            echo "Creating manifest for $image"
-            docker buildx imagetools create \
-              $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-              $(printf "$image@sha256:%s " *)
-          done
 
       - name: Inspect images
         run: |
