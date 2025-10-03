@@ -96,11 +96,22 @@ jobs:
       - name: Prepare image list
         id: prepare-images
         run: |
-          IMAGES="${DOCKERHUB_REPO_LOWER} ${GHCR_REPO_LOWER}"
+          images=("${DOCKERHUB_REPO_LOWER}" "${GHCR_REPO_LOWER}")
           if [ -n "${ACR_REPO_LOWER}" ] && [ "${{ inputs.push_to_acr }}" == "true" ]; then
-            IMAGES="$IMAGES ${ACR_REPO_LOWER}"
+            images+=("${ACR_REPO_LOWER}")
           fi
-          echo "images=$IMAGES" >> $GITHUB_OUTPUT
+
+          {
+            echo 'images<<EOF'
+            printf '%s\n' "${images[@]}"
+            echo 'EOF'
+
+            echo 'outputs<<EOF'
+            for image in "${images[@]}"; do
+              printf 'type=image,name=%s,push-by-digest=true,name-canonical=true,push=true\n' "$image"
+            done
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check Docker Hub credentials
         id: dockerhub-creds
@@ -153,7 +164,7 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,"name=${{ steps.prepare-images.outputs.images }}",push-by-digest=true,name-canonical=true,push=true
+          outputs: ${{ steps.prepare-images.outputs.outputs }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           context: .
@@ -224,11 +235,16 @@ jobs:
       - name: Prepare image list
         id: prepare-images
         run: |
-          IMAGES="${DOCKERHUB_REPO_LOWER} ${GHCR_REPO_LOWER}"
+          images=("${DOCKERHUB_REPO_LOWER}" "${GHCR_REPO_LOWER}")
           if [ -n "${ACR_REPO_LOWER}" ]; then
-            IMAGES="$IMAGES ${ACR_REPO_LOWER}"
+            images+=("${ACR_REPO_LOWER}")
           fi
-          echo "images=$IMAGES" >> $GITHUB_OUTPUT
+
+          {
+            echo 'images<<EOF'
+            printf '%s\n' "${images[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Inspect images
         run: |
