@@ -10,13 +10,16 @@ import os
 import shutil
 import tempfile
 import zipfile
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from dataclasses import field
+from datetime import datetime
+from datetime import timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from babeldoc.assets import assets as babeldoc_assets
 from fastapi import FastAPI
 from fastapi import File
 from fastapi import Form
@@ -26,14 +29,10 @@ from fastapi.responses import JSONResponse
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
-from babeldoc.assets import assets as babeldoc_assets
-
-from pdf2zh_next.const import __version__
 from pdf2zh_next.config.cli_env_model import CLIEnvSettingsModel
 from pdf2zh_next.config.model import SettingsModel
-from pdf2zh_next.config.translate_engine_model import (
-    TRANSLATION_ENGINE_METADATA_MAP,
-)
+from pdf2zh_next.config.translate_engine_model import TRANSLATION_ENGINE_METADATA_MAP
+from pdf2zh_next.const import __version__
 from pdf2zh_next.high_level import do_translate_async_stream
 
 logger = logging.getLogger(__name__)
@@ -552,8 +551,8 @@ def _get_active_tasks_count() -> int:
 
 @app.post("/v1/translate")
 async def translate_pdf(
-    file: UploadFile = File(...),
-    settings_json: str = Form("{}"),
+    file: UploadFile = File(...),  # noqa: B008
+    settings_json: str = Form("{}"),  # noqa: B008
     wait: bool = False,
     wait_timeout: float | None = None,
 ):

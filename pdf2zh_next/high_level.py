@@ -8,7 +8,8 @@ import queue
 import threading
 import traceback
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import datetime
+from datetime import timezone
 from functools import partial
 from logging.handlers import QueueHandler
 from pathlib import Path

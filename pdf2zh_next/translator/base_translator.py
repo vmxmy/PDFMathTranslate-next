@@ -1,9 +1,9 @@
 import contextlib
 import logging
 import re
-from string import Template
 from abc import ABC
 from abc import abstractmethod
+from string import Template
 
 from pdf2zh_next.config.model import SettingsModel
 from pdf2zh_next.translator.base_rate_limiter import BaseRateLimiter

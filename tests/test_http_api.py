@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-
 from pdf2zh_next.http_api import _build_settings
 from pdf2zh_next.http_api import app
 
