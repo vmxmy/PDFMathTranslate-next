@@ -22,6 +22,19 @@ on:
         type: boolean
         default: true
         description: 'Whether to push to ACR'
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+      ACR_REGISTRY:
+        required: false
+      ACR_REPOSITORY:
+        required: false
+      ACR_USERNAME:
+        required: false
+      ACR_PASSWORD:
+        required: false
   workflow_dispatch:
     inputs:
       version:
