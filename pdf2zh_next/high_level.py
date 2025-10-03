@@ -448,7 +448,7 @@ async def _translate_in_subprocess(
             logger.debug(f"Failed to send sentinel to logger_queue: {e}")
 
         # 等待日志线程，使用超时防止卡住
-        log_t.join(timeout=1)
+        log_t.join(timeout=5)
         if log_t.is_alive():
             logger.warning("Log thread did not finish in time")
 
