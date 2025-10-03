@@ -17,7 +17,7 @@ env:
   REGISTRY: ghcr.io
   REPO_LOWER: ${{ github.repository_owner }}/${{ github.event.repository.name }}
   GHCR_REPO: ghcr.io/${{ github.repository }}
-  DOCKERHUB_REPO: awwaawwa/pdfmathtranslate-next
+  DOCKERHUB_REPO: kulangsu/pdf2zh
   WIN_EXE_PYTHON_VERSION: "3.13.3"
 
 jobs:

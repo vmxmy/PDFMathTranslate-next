@@ -15,7 +15,7 @@ env:
   REGISTRY: ghcr.io
   REPO_LOWER: ${{ github.repository_owner }}/${{ github.event.repository.name }}
   GHCR_REPO: ghcr.io/${{ github.repository }}
-  DOCKERHUB_REPO: awwaawwa/pdfmathtranslate-next
+  DOCKERHUB_REPO: kulangsu/pdf2zh
   ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
   ACR_REPO: ${{ secrets.ACR_REPOSITORY }}
   WIN_EXE_PYTHON_VERSION: "3.13.3"
@@ -169,7 +169,7 @@ jobs:
     if: needs.check-repository.outputs.is_main_repo == 'true'
     environment:
       name: ${{ needs.build.outputs.is_release != '' && 'pypi' || 'testpypi' }}
-      url: ${{ needs.build.outputs.is_release != '' && 'https://hub.docker.com/r/awwaawwa/pdfmathtranslate-next/tags?name=latest' || 'https://hub.docker.com/r/awwaawwa/pdfmathtranslate-next/tags?name=dev' }}
+      url: ${{ needs.build.outputs.is_release != '' && 'https://hub.docker.com/r/kulangsu/pdf2zh/tags?name=latest' || 'https://hub.docker.com/r/kulangsu/pdf2zh/tags?name=dev' }}
     permissions:
       contents: read
       packages: write

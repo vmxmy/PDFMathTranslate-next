@@ -12,7 +12,9 @@
       "mcp__arjunkmrm-perplexity-search__search",
       "Bash(docker:*)",
       "Bash(sudo launchctl:*)",
-      "Bash(killall:*)"
+      "Bash(killall:*)",
+      "Bash(curl:*)",
+      "Bash(python3 -)"
     ],
     "deny": [],
     "ask": []
