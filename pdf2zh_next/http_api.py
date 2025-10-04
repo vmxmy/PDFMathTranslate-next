@@ -33,6 +33,7 @@ from pdf2zh_next.config.cli_env_model import CLIEnvSettingsModel
 from pdf2zh_next.config.model import SettingsModel
 from pdf2zh_next.config.translate_engine_model import TRANSLATION_ENGINE_METADATA_MAP
 from pdf2zh_next.const import __version__
+from pdf2zh_next.error_handler import ErrorMessages
 from pdf2zh_next.high_level import do_translate_async_stream
 
 logger = logging.getLogger(__name__)
@@ -260,6 +261,46 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """全局异常处理器，返回友好错误信息"""
+    logger.exception(f"Unhandled exception: {exc}")
+
+    error_message = str(exc)
+    friendly_error = ErrorMessages.get_friendly_error(error_message)
+
+    return JSONResponse(
+        status_code=500,
+        content=ErrorMessages.format_api_error_response(error_message) | {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "path": str(request.url.path)
+        }
+    )
+
+
+@app.exception_handler(RuntimeError)
+async def runtime_error_handler(request, exc):
+    """RuntimeError 异常处理器"""
+    logger.error(f"Runtime error: {exc}")
+
+    error_message = str(exc)
+    # 如果错误消息已经包含友好信息，直接使用
+    if "错误代码:" in error_message:
+        user_message = error_message.split(" (错误代码:")[0]
+        error_code = error_message.split("错误代码: ")[1].rstrip(")")
+        friendly_error = ErrorMessages.get_friendly_error(error_code.lower())
+    else:
+        friendly_error = ErrorMessages.get_friendly_error(error_message)
+
+    return JSONResponse(
+        status_code=400,
+        content=ErrorMessages.format_api_error_response(error_message) | {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "path": str(request.url.path)
+        }
+    )
+
+
 def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
     merged: dict[str, Any] = {}
     for key, value in base.items():
@@ -388,7 +429,9 @@ async def _stream_translation(
                 error_message,
                 error_type,
             )
-            raise RuntimeError(error_message)
+            # 创建友好错误信息
+            friendly_error = ErrorMessages.get_friendly_error(error_message)
+            raise RuntimeError(f"{friendly_error['user_message']} (错误代码: {friendly_error['error_code']})")
         if event_type == "finish":
             result_event = dict(event)
             result_event["logs"] = list(task.logs)
@@ -801,5 +844,41 @@ async def health_check():
             "queue_limit": QUEUE_MAX_SIZE or None,
             "queue_size": _get_active_tasks_count(),
             "version": __version__,
+            "system_info": {
+                "memory_monitoring": "enabled",
+                "friendly_errors": "enabled",
+                "suggestions_for_common_issues": {
+                    "oom_error": "Reduce PDF size or increase TRANSLATION_MEMORY_LIMIT_MB",
+                    "network_timeout": "Check network connectivity and LLM service status",
+                    "api_key_error": "Verify API key configuration and validity",
+                    "pdf_corrupted": "Try opening PDF with another reader or regenerate file"
+                }
+            }
         }
     )
+
+
+@app.get("/v1/error-codes")
+async def get_error_codes():
+    """获取所有错误代码和解决建议"""
+    all_errors = {}
+
+    # 合并所有错误类型
+    for error_category in [
+        ErrorMessages.MEMORY_ERRORS,
+        ErrorMessages.NETWORK_ERRORS,
+        ErrorMessages.API_ERRORS,
+        ErrorMessages.PDF_ERRORS,
+        ErrorMessages.SYSTEM_ERRORS
+    ]:
+        for pattern, error_info in error_category.items():
+            all_errors[error_info["error_code"]] = {
+                "message": error_info["user_message"],
+                "suggestions": error_info["suggestions"],
+                "category": pattern
+            }
+
+    return JSONResponse({
+        "error_codes": all_errors,
+        "total_count": len(all_errors)
+    })
