@@ -113,10 +113,16 @@ auth_service = AuthService()
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Security(security),
 ) -> dict[str, Any]:
     """获取当前用户信息"""
+    cached = getattr(request.state, "user_info", None)
+    if cached and cached.get("api_key") == credentials.credentials:
+        return cached
+
     user_info = await auth_service.verify_api_key(credentials)
+    request.state.user_info = user_info
 
     # 检查速率限制
     # TODO: 从request对象获取endpoint信息

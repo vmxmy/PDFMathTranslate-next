@@ -7,11 +7,14 @@ from typing import Any
 from fastapi import Request
 from fastapi import Response
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security.utils import get_authorization_scheme_param
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from .dependencies import set_request_id
-from .exceptions import RateLimitException
+from .dependencies import set_request_id, auth_service
+from .exceptions import RateLimitException, UnauthorizedException
+from .models.enums import UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +98,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # 获取用户信息
         user_info = getattr(request.state, "user_info", None)
         if not user_info:
-            # 未认证用户，使用默认限制
+            auth_header = request.headers.get("Authorization")
+            if auth_header:
+                scheme, token = get_authorization_scheme_param(auth_header)
+                if scheme.lower() == "bearer" and token:
+                    credentials = HTTPAuthorizationCredentials(
+                        scheme=scheme, credentials=token
+                    )
+                    try:
+                        user_info = await auth_service.verify_api_key(credentials)
+                        request.state.user_info = user_info
+                    except UnauthorizedException:
+                        user_info = None
+
+        if user_info and user_info.get("role") == UserRole.ADMIN:
+            return await call_next(request)
+
+        if not user_info:
             rate_limit = 10  # 每分钟10次
             user_id = (
                 f"anonymous:{request.client.host if request.client else 'unknown'}"
