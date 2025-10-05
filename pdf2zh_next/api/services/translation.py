@@ -69,6 +69,27 @@ class TranslationService:
     ) -> TranslationTask:
         """创建翻译任务"""
         try:
+            engine_enum = request.translation_engine
+            if isinstance(engine_enum, str):
+                engine_str = engine_enum.lower()
+                engine_str = engine_str.split("/")[0]
+                alias_map = {
+                    "pdf2zh": TranslationEngine.GOOGLE,
+                    "openrouter": TranslationEngine.OPENAI,
+                    "gemini": TranslationEngine.GOOGLE,
+                }
+                engine_enum = alias_map.get(engine_str)
+                if engine_enum is None:
+                    try:
+                        engine_enum = TranslationEngine(engine_str)
+                    except ValueError:
+                        logger.warning(
+                            "Unknown translation_engine '%s', fallback to google",
+                            request.translation_engine,
+                        )
+                        engine_enum = TranslationEngine.GOOGLE
+            request.translation_engine = engine_enum
+
             # 验证文件
             await self._validate_files(request.files, user_info)
 
