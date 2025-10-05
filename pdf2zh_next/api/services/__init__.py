@@ -1,8 +1,12 @@
 """API服务层模块"""
-from .task_manager import task_manager, TaskManager
-from .translation import translation_service, TranslationService
-from .system import system_service, SystemService
-from .config import config_service, ConfigService
+from .config import ConfigService
+from .config import config_service
+from .system import SystemService
+from .system import system_service
+from .task_manager import TaskManager
+from .task_manager import task_manager
+from .translation import TranslationService
+from .translation import translation_service
 
 __all__ = [
     # Task Manager

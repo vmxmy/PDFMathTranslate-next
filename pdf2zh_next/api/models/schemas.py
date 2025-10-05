@@ -57,19 +57,22 @@ class PaginatedResponse(BaseSchema, Generic[T]):
     sort_order: str = Field(description="排序方式")
 
     @field_validator("total_pages")
-    def calculate_total_pages(cls, v, info):
+    @classmethod
+    def calculate_total_pages(cls, _value, info):
         total = info.data.get("total", 0)
         page_size = info.data.get("page_size", 1)
         return (total + page_size - 1) // page_size
 
     @field_validator("has_next")
-    def calculate_has_next(cls, v, info):
+    @classmethod
+    def calculate_has_next(cls, _value, info):
         page = info.data.get("page", 1)
         total_pages = info.data.get("total_pages", 0)
         return page < total_pages
 
     @field_validator("has_prev")
-    def calculate_has_prev(cls, v, info):
+    @classmethod
+    def calculate_has_prev(cls, _value, info):
         page = info.data.get("page", 1)
         return page > 1
 
@@ -86,6 +89,7 @@ class APIResponse(BaseSchema, Generic[T]):
     version: str = Field("v1", description="API版本")
 
     @field_validator("error")
+    @classmethod
     def validate_consistency(cls, v, info):
         success = info.data.get("success")
         if success and v is not None:

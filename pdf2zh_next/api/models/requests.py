@@ -39,6 +39,7 @@ class TranslationRequest(BaseSchema):
     )
 
     @field_validator("files")
+    @classmethod
     def validate_files(cls, v):
         if not v:
             raise ValueError("至少需要上传一个文件")
@@ -48,6 +49,7 @@ class TranslationRequest(BaseSchema):
         return v
 
     @field_validator("webhook_url")
+    @classmethod
     def validate_webhook_url(cls, v):
         if v and not (v.startswith("http://") or v.startswith("https://")):
             raise ValueError("Webhook URL必须是有效的HTTP/HTTPS地址")
@@ -64,6 +66,7 @@ class WarmupRequest(BaseSchema):
     test_connections: bool = Field(True, description="是否测试连接")
 
     @field_validator("preload_engines")
+    @classmethod
     def validate_engines(cls, v):
         if len(v) != len(set(v)):
             raise ValueError("翻译引擎列表不能包含重复项")
@@ -90,9 +93,10 @@ class ConfigUpdateRequest(BaseSchema):
     )
 
     @field_validator("*", mode="before")
+    @classmethod
     def validate_config_sections(cls, v, info):
         if v is not None and not isinstance(v, dict):
-            field_name = info.field_name if hasattr(info, 'field_name') else '配置字段'
+            field_name = info.field_name if hasattr(info, "field_name") else "配置字段"
             raise ValueError(f"{field_name} 必须是字典类型")
         return v
 
@@ -107,6 +111,8 @@ class TaskFilterRequest(BaseSchema):
     user_id: str | None = Field(None, description="用户ID过滤")
     priority_min: int | None = Field(None, ge=1, le=5, description="最小优先级")
     priority_max: int | None = Field(None, ge=1, le=5, description="最大优先级")
+    sort_by: str | None = Field(None, description="排序字段")
+    sort_order: str | None = Field(None, description="排序方式")
 
 
 class BatchOperationRequest(BaseSchema):
@@ -116,6 +122,7 @@ class BatchOperationRequest(BaseSchema):
     operation: str = Field(..., description="操作类型")
 
     @field_validator("task_ids")
+    @classmethod
     def validate_task_ids(cls, v):
         if not v:
             raise ValueError("任务ID列表不能为空")
@@ -124,6 +131,7 @@ class BatchOperationRequest(BaseSchema):
         return v
 
     @field_validator("operation")
+    @classmethod
     def validate_operation(cls, v):
         allowed_operations = ["cancel", "delete", "retry", "pause", "resume"]
         if v not in allowed_operations:
@@ -138,6 +146,7 @@ class WebhookTestRequest(BaseSchema):
     test_payload: dict[str, Any] | None = Field(None, description="测试负载")
 
     @field_validator("webhook_url")
+    @classmethod
     def validate_webhook_url(cls, v):
         if not (v.startswith("http://") or v.startswith("https://")):
             raise ValueError("Webhook URL必须是有效的HTTP/HTTPS地址")
@@ -155,6 +164,7 @@ class TranslationPreviewRequest(BaseSchema):
     )
 
     @field_validator("text")
+    @classmethod
     def validate_text(cls, v):
         if not v.strip():
             raise ValueError("翻译文本不能为空")

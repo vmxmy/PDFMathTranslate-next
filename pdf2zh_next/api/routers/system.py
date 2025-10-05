@@ -1,6 +1,8 @@
 """系统管理相关路由"""
 
+import logging
 import time
+from typing import Annotated
 from typing import Any
 
 from fastapi import APIRouter
@@ -19,20 +21,25 @@ from ..services import system_service
 
 router = APIRouter(prefix="/system", tags=["system"])
 
+logger = logging.getLogger(__name__)
+AdminUser = Annotated[dict[str, Any], Depends(require_role(UserRole.ADMIN))]
+
 
 @router.post("/warmup", response_model=APIResponse[WarmupResponse])
 async def warmup_system(
-    preload_engines: list[str] = ["google", "deepl"],
+    _current_user: AdminUser,
+    preload_engines: list[str] | None = None,
     cache_models: bool = True,
     test_connections: bool = True,
-    current_user: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     """系统预热"""
     try:
         from ..models import WarmupRequest
 
+        engines = preload_engines if preload_engines is not None else ["google", "deepl"]
+
         request = WarmupRequest(
-            preload_engines=preload_engines,
+            preload_engines=engines,
             cache_models=cache_models,
             test_connections=test_connections,
         )
@@ -49,28 +56,32 @@ async def warmup_system(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        if isinstance(e, (BadRequestException, InternalServerException)):
+    except Exception as exc:
+        if isinstance(exc, (BadRequestException, InternalServerException)):
             raise
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post(
     "/offline-assets/generate", response_model=APIResponse[list[OfflineAssetStatus]]
 )
 async def generate_offline_assets(
-    asset_types: list[str] = ["translation_models", "language_packs"],
+    _current_user: AdminUser,
+    asset_types: list[str] | None = None,
     languages: list[str] | None = None,
     include_dependencies: bool = True,
     compression_level: int = 6,
-    current_user: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     """生成离线资源"""
     try:
         from ..models import OfflineAssetRequest
 
+        selected_assets = (
+            asset_types if asset_types is not None else ["translation_models", "language_packs"]
+        )
+
         request = OfflineAssetRequest(
-            asset_types=asset_types,
+            asset_types=selected_assets,
             languages=languages,
             include_dependencies=include_dependencies,
             compression_level=compression_level,
@@ -89,15 +100,16 @@ async def generate_offline_assets(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        if isinstance(e, (BadRequestException, InternalServerException)):
+    except Exception as exc:
+        if isinstance(exc, (BadRequestException, InternalServerException)):
             raise
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/offline-assets/restore", response_model=APIResponse[bool])
 async def restore_offline_assets(
-    asset_types: list[str], current_user: dict = Depends(require_role(UserRole.ADMIN))
+    asset_types: list[str],
+    _current_user: AdminUser,
 ):
     """恢复离线资源"""
     try:
@@ -109,14 +121,14 @@ async def restore_offline_assets(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        if isinstance(e, (BadRequestException, InternalServerException)):
+    except Exception as exc:
+        if isinstance(exc, (BadRequestException, InternalServerException)):
             raise
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/info", response_model=APIResponse[dict[str, Any]])
-async def get_system_info(current_user: dict = Depends(require_role(UserRole.ADMIN))):
+async def get_system_info(_current_user: AdminUser):
     """获取系统信息"""
     try:
         system_info = await system_service.get_system_info()
@@ -127,22 +139,23 @@ async def get_system_info(current_user: dict = Depends(require_role(UserRole.ADM
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        if isinstance(e, InternalServerException):
+    except Exception as exc:
+        if isinstance(exc, InternalServerException):
             raise
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/cache/clear", response_model=APIResponse[bool])
 async def clear_cache(
-    cache_types: list[str] = ["translation", "config"],
-    current_user: dict = Depends(require_role(UserRole.ADMIN)),
+    _current_user: AdminUser,
+    cache_types: list[str] | None = None,
 ):
     """清除缓存"""
     try:
         # TODO: 实现缓存清除逻辑
         success = True
-        logger.info(f"清除缓存: {cache_types}")
+        targets = cache_types if cache_types is not None else ["translation", "config"]
+        logger.info("清除缓存: %s", targets)
 
         return APIResponse(
             success=True,
@@ -150,17 +163,17 @@ async def clear_cache(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/logs", response_model=APIResponse[dict[str, Any]])
 async def get_system_logs(
+    _current_user: AdminUser,
     lines: int = 100,
     level: str | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
-    current_user: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     """获取系统日志"""
     try:
@@ -181,14 +194,14 @@ async def get_system_logs(
         return APIResponse(
             success=True, data=logs, timestamp=time.time(), request_id=get_request_id()
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/restart", response_model=APIResponse[bool])
 async def restart_system(
+    _current_user: AdminUser,
     restart_type: str = "soft",
-    current_user: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     """重启系统"""
     try:
@@ -201,7 +214,9 @@ async def restart_system(
 
         success = True
         logger.warning(
-            f"系统重启请求: 类型={restart_type}, 用户={current_user['user_id']}"
+            "系统重启请求: 类型=%s, 用户=%s",
+            restart_type,
+            _current_user.get("user_id", "unknown"),
         )
 
         return APIResponse(
@@ -210,17 +225,17 @@ async def restart_system(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        if isinstance(e, BadRequestException):
+    except Exception as exc:
+        if isinstance(exc, BadRequestException):
             raise
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/metrics", response_model=APIResponse[dict[str, Any]])
 async def get_system_metrics(
-    metric_types: list[str] = ["cpu", "memory", "disk"],
+    _current_user: AdminUser,
+    metric_types: list[str] | None = None,
     time_range: str = "1h",
-    current_user: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     """获取系统指标"""
     try:
@@ -258,10 +273,12 @@ async def get_system_metrics(
         }
 
         # 只返回请求的指标类型
+        requested_metrics = metric_types if metric_types is not None else ["cpu", "memory", "disk"]
+
         filtered_metrics = {
             k: v
             for k, v in metrics.items()
-            if k in metric_types or k in ["time_range", "timestamp"]
+            if k in requested_metrics or k in ["time_range", "timestamp"]
         }
 
         return APIResponse(
@@ -270,5 +287,5 @@ async def get_system_metrics(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

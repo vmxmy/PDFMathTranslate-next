@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict
+from typing import Any
 
 from pdf2zh_next.config.cli_env_model import CLIEnvSettingsModel
 from pdf2zh_next.config.translate_engine_model import TRANSLATION_ENGINE_METADATA_MAP
-
 
 DEFAULT_CLI_SETTINGS = CLIEnvSettingsModel()
 DEFAULT_CLI_SETTINGS_DICT = DEFAULT_CLI_SETTINGS.model_dump(mode="json")
@@ -21,8 +20,8 @@ ENGINE_TYPE_MAP = {
 }
 
 
-def _deep_merge(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
-    result: Dict[str, Any] = copy.deepcopy(base)
+def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = copy.deepcopy(base)
     for key, value in overrides.items():
         if (
             key in result
@@ -35,7 +34,7 @@ def _deep_merge(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, An
     return result
 
 
-def _normalize_translate_engine_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_translate_engine_payload(payload: dict[str, Any]) -> dict[str, Any]:
     payload = copy.deepcopy(payload)
     engine_payload = payload.get("translate_engine_settings") or {}
     if not engine_payload:
@@ -49,7 +48,7 @@ def _normalize_translate_engine_payload(payload: Dict[str, Any]) -> Dict[str, An
     if metadata is None:
         return payload
 
-    normalized: Dict[str, Any] = {}
+    normalized: dict[str, Any] = {}
     for meta in TRANSLATION_ENGINE_METADATA_MAP.values():
         normalized[meta.cli_flag_name] = False
         if meta.cli_detail_field_name:
@@ -70,9 +69,9 @@ def _normalize_translate_engine_payload(payload: Dict[str, Any]) -> Dict[str, An
 
 
 def build_settings_model(
-    request_overrides: Dict[str, Any] | None = None,
-    engine_payload: Dict[str, Any] | None = None,
-    extra_overrides: Dict[str, Any] | None = None,
+    request_overrides: dict[str, Any] | None = None,
+    engine_payload: dict[str, Any] | None = None,
+    extra_overrides: dict[str, Any] | None = None,
 ) -> CLIEnvSettingsModel:
     merged = copy.deepcopy(DEFAULT_CLI_SETTINGS_DICT)
     if engine_payload:

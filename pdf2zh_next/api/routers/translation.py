@@ -2,7 +2,8 @@
 
 import time
 from datetime import datetime
-from typing import Any, Dict
+from typing import Annotated
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -20,6 +21,7 @@ from ..exceptions import NotFoundException
 from ..exceptions import create_validation_exception
 from ..models import APIResponse
 from ..models import BatchOperationRequest
+from ..models import CleanupResult
 from ..models import PaginatedResponse
 from ..models import TranslationPreview
 from ..models import TranslationPreviewRequest
@@ -27,28 +29,28 @@ from ..models import TranslationProgress
 from ..models import TranslationRequest
 from ..models import TranslationResult
 from ..models import TranslationTask
-from ..models import CleanupResult
 from ..services import translation_service
 
 router = APIRouter(prefix="/translations", tags=["translations"])
 
+CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
+
 
 @router.post("/", response_model=APIResponse[TranslationTask])
 async def create_translation(
-    files: list[UploadFile] = File(..., description="要翻译的PDF文件列表"),
-    target_language: str = Form("zh", description="目标语言代码"),
-    source_language: str | None = Form(
-        None, description="源语言代码（可选，自动检测）"
-    ),
-    translation_engine: str = Form("google", description="翻译引擎"),
-    preserve_formatting: bool = Form(True, description="是否保持格式"),
-    translate_tables: bool = Form(True, description="是否翻译表格"),
-    translate_equations: bool = Form(True, description="是否处理数学公式"),
-    custom_glossary: str | None = Form(None, description="自定义术语词典（JSON格式）"),
-    webhook_url: str | None = Form(None, description="完成通知的webhook URL"),
-    priority: int = Form(1, ge=1, le=5, description="任务优先级（1-5，5最高）"),
-    timeout: int | None = Form(None, ge=60, description="超时时间（秒）"),
-    current_user: dict = Depends(get_current_user),
+    files: Annotated[ list[UploadFile], File(..., description="要翻译的PDF文件列表") ],
+    target_language: Annotated[str, Form(description="目标语言代码")] = "zh",
+    source_language: Annotated[str | None, Form(description="源语言代码（可选，自动检测）")] = None,
+    translation_engine: Annotated[str, Form(description="翻译引擎")] = "google",
+    preserve_formatting: Annotated[bool, Form(description="是否保持格式")] = True,
+    translate_tables: Annotated[bool, Form(description="是否翻译表格")] = True,
+    translate_equations: Annotated[bool, Form(description="是否处理数学公式")] = True,
+    custom_glossary: Annotated[str | None, Form(description="自定义术语词典（JSON格式）")] = None,
+    webhook_url: Annotated[str | None, Form(description="完成通知的webhook URL")] = None,
+    priority: Annotated[int, Form(ge=1, le=5, description="任务优先级（1-5，5最高）")] = 1,
+    timeout: Annotated[int | None, Form(ge=60, description="超时时间（秒）")] = None,
+    *,
+    current_user: CurrentUser,
 ):
     """创建PDF翻译任务"""
     try:
@@ -59,10 +61,10 @@ async def create_translation(
 
             try:
                 glossary_dict = json.loads(custom_glossary)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError as exc:
                 raise create_validation_exception(
-                    "custom_glossary", f"无效的JSON格式: {e}"
-                )
+                    "custom_glossary", f"无效的JSON格式: {exc}"
+                ) from exc
 
         # 构建请求对象
         request = TranslationRequest(
@@ -86,15 +88,15 @@ async def create_translation(
             success=True, data=task, timestamp=time.time(), request_id=get_request_id()
         )
 
-    except Exception as e:
-        if isinstance(e, (BadRequestException, NotFoundException)):
+    except Exception as exc:
+        if isinstance(exc, (BadRequestException, NotFoundException)):
             raise
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/{task_id}", response_model=APIResponse[TranslationTask])
 async def get_translation_status(
-    task_id: str, current_user: dict = Depends(get_current_user)
+    task_id: str, current_user: CurrentUser
 ):
     """获取翻译任务状态"""
     try:
@@ -103,15 +105,15 @@ async def get_translation_status(
         return APIResponse(
             success=True, data=task, timestamp=time.time(), request_id=get_request_id()
         )
-    except NotFoundException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except NotFoundException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/{task_id}/progress", response_model=APIResponse[TranslationProgress])
 async def get_translation_progress(
-    task_id: str, current_user: dict = Depends(get_current_user)
+    task_id: str, current_user: CurrentUser
 ):
     """获取翻译任务进度"""
     try:
@@ -123,15 +125,15 @@ async def get_translation_progress(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except NotFoundException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except NotFoundException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/{task_id}/result", response_model=APIResponse[TranslationResult])
 async def get_translation_result(
-    task_id: str, current_user: dict = Depends(get_current_user)
+    task_id: str, current_user: CurrentUser
 ):
     """获取翻译结果"""
     try:
@@ -143,10 +145,10 @@ async def get_translation_result(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except NotFoundException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except NotFoundException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get(
@@ -157,7 +159,7 @@ async def get_translation_result(
 async def download_translation_file(
     task_id: str,
     file_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: CurrentUser,
 ):
     """下载翻译结果文件"""
     try:
@@ -169,15 +171,15 @@ async def download_translation_file(
             filename=file_path.name,
             media_type="application/zip",
         )
-    except NotFoundException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except NotFoundException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.delete("/{task_id}", response_model=APIResponse[bool])
 async def delete_translation_task(
-    task_id: str, current_user: dict = Depends(get_current_user)
+    task_id: str, current_user: CurrentUser
 ):
     """删除翻译任务"""
     try:
@@ -189,15 +191,15 @@ async def delete_translation_task(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except NotFoundException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except NotFoundException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/{task_id}/clean", response_model=APIResponse[CleanupResult])
 async def clean_translation_artifacts(
-    task_id: str, current_user: dict = Depends(get_current_user)
+    task_id: str, current_user: CurrentUser
 ):
     """清理任务产物（临时文件与打包结果）"""
     try:
@@ -208,17 +210,17 @@ async def clean_translation_artifacts(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except NotFoundException as e:
-        raise e
-    except BadRequestException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except NotFoundException:
+        raise
+    except BadRequestException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/{task_id}/cancel", response_model=APIResponse[bool])
 async def cancel_translation_task(
-    task_id: str, current_user: dict = Depends(get_current_user)
+    task_id: str, current_user: CurrentUser
 ):
     """取消翻译任务"""
     try:
@@ -230,25 +232,26 @@ async def cancel_translation_task(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except NotFoundException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except NotFoundException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/", response_model=APIResponse[PaginatedResponse[TranslationTask]])
 async def list_translation_tasks(
-    page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(20, ge=1, le=100, description="每页大小"),
-    status: list[str] | None = Query(None, description="任务状态过滤"),
-    engine: list[str] | None = Query(None, description="翻译引擎过滤"),
-    date_from: datetime | None = Query(None, description="开始时间过滤"),
-    date_to: datetime | None = Query(None, description="结束时间过滤"),
-    priority_min: int | None = Query(None, ge=1, le=5, description="最小优先级"),
-    priority_max: int | None = Query(None, ge=1, le=5, description="最大优先级"),
-    sort_by: str | None = Query(None, description="排序字段"),
-    sort_order: str = Query("desc", regex="^(asc|desc)$", description="排序方式"),
-    current_user: dict = Depends(get_current_user),
+    page: Annotated[int, Query(ge=1, description="页码")] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100, description="每页大小")] = 20,
+    status: Annotated[list[str] | None, Query(description="任务状态过滤")] = None,
+    engine: Annotated[list[str] | None, Query(description="翻译引擎过滤")] = None,
+    date_from: Annotated[datetime | None, Query(description="开始时间过滤")] = None,
+    date_to: Annotated[datetime | None, Query(description="结束时间过滤")] = None,
+    priority_min: Annotated[int | None, Query(ge=1, le=5, description="最小优先级")] = None,
+    priority_max: Annotated[int | None, Query(ge=1, le=5, description="最大优先级")] = None,
+    sort_by: Annotated[str | None, Query(description="排序字段")] = None,
+    sort_order: Annotated[str, Query(regex="^(asc|desc)$", description="排序方式")] = "desc",
+    *,
+    current_user: CurrentUser,
 ):
     """列出翻译任务"""
     try:
@@ -260,6 +263,8 @@ async def list_translation_tasks(
             "date_to": date_to,
             "priority_min": priority_min,
             "priority_max": priority_max,
+            "sort_by": sort_by,
+            "sort_order": sort_order,
         }
 
         # 移除None值
@@ -267,7 +272,10 @@ async def list_translation_tasks(
 
         # 获取任务列表
         result = await translation_service.list_tasks(
-            current_user, page=page, page_size=page_size, **filters
+            current_user,
+            page=page,
+            page_size=page_size,
+            **filters,
         )
 
         return APIResponse(
@@ -276,13 +284,13 @@ async def list_translation_tasks(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.post("/batch", response_model=APIResponse[Dict[str, Any]])
+@router.post("/batch", response_model=APIResponse[dict[str, Any]])
 async def batch_operation_tasks(
-    request: BatchOperationRequest, current_user: dict = Depends(get_current_user)
+    request: BatchOperationRequest, current_user: CurrentUser
 ):
     """批量操作翻译任务"""
     try:
@@ -294,12 +302,12 @@ async def batch_operation_tasks(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/statistics", response_model=APIResponse[Dict[str, Any]])
-async def get_translation_statistics(current_user: dict = Depends(get_current_user)):
+@router.get("/statistics", response_model=APIResponse[dict[str, Any]])
+async def get_translation_statistics(current_user: CurrentUser):
     """获取翻译统计信息"""
     try:
         statistics = await translation_service.get_statistics(current_user)
@@ -310,13 +318,13 @@ async def get_translation_statistics(current_user: dict = Depends(get_current_us
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/preview", response_model=APIResponse[TranslationPreview])
 async def preview_translation(
-    request: TranslationPreviewRequest, current_user: dict = Depends(get_current_user)
+    request: TranslationPreviewRequest, current_user: CurrentUser
 ):
     """预览翻译结果"""
     try:
@@ -328,13 +336,13 @@ async def preview_translation(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.post("/webhook/test", response_model=APIResponse[Dict[str, Any]])
+@router.post("/webhook/test", response_model=APIResponse[dict[str, Any]])
 async def test_webhook(
-    webhook_url: str, current_user: dict = Depends(get_current_user)
+    webhook_url: str, _current_user: CurrentUser
 ):
     """测试webhook连接"""
     try:
@@ -352,5 +360,5 @@ async def test_webhook(
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

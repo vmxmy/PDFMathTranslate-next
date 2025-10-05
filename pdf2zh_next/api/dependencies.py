@@ -1,6 +1,8 @@
 """依赖注入模块"""
 
+import logging
 import uuid
+from typing import Annotated
 from typing import Any
 
 from fastapi import Depends
@@ -14,8 +16,11 @@ from .exceptions import UnauthorizedException
 from .models import UserInfo
 from .models import UserRole
 
+logger = logging.getLogger(__name__)
+
 # 安全配置
 security = HTTPBearer()
+BearerCredentials = Annotated[HTTPAuthorizationCredentials, Security(security)]
 
 # 全局请求ID存储
 _request_id_context = {}
@@ -114,7 +119,7 @@ auth_service = AuthService()
 
 async def get_current_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Security(security),
+    credentials: BearerCredentials,
 ) -> dict[str, Any]:
     """获取当前用户信息"""
     cached = getattr(request.state, "user_info", None)
@@ -132,7 +137,7 @@ async def get_current_user(
 
 
 async def get_current_user_info(
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
 ) -> UserInfo:
     """获取当前用户详细信息"""
     return UserInfo(
@@ -153,7 +158,7 @@ def require_role(required_role: UserRole):
     """角色权限装饰器"""
 
     def role_checker(
-        current_user: dict[str, Any] = Depends(get_current_user),
+        current_user: Annotated[dict[str, Any], Depends(get_current_user)],
     ) -> dict[str, Any]:
         user_role = current_user.get("role")
 
@@ -183,7 +188,7 @@ def require_permission(permission: str):
     """权限检查装饰器"""
 
     def permission_checker(
-        current_user: dict[str, Any] = Depends(get_current_user),
+        current_user: Annotated[dict[str, Any], Depends(get_current_user)],
     ) -> dict[str, Any]:
         permissions = current_user.get("permissions", [])
 
@@ -215,7 +220,3 @@ async def get_request_info(request: Request) -> dict[str, Any]:
         "request_id": getattr(request.state, "request_id", "unknown"),
     }
 
-
-import logging
-
-logger = logging.getLogger(__name__)

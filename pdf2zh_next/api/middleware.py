@@ -12,8 +12,10 @@ from fastapi.security.utils import get_authorization_scheme_param
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from .dependencies import set_request_id, auth_service
-from .exceptions import RateLimitException, UnauthorizedException
+from .dependencies import auth_service
+from .dependencies import set_request_id
+from .exceptions import RateLimitException
+from .exceptions import UnauthorizedException
 from .models.enums import UserRole
 
 logger = logging.getLogger(__name__)

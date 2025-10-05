@@ -27,10 +27,10 @@ async def health_check():
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        if isinstance(e, InternalServerException):
+    except Exception as exc:
+        if isinstance(exc, InternalServerException):
             raise
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/ready", response_model=APIResponse[dict[str, Any]])
@@ -183,8 +183,8 @@ async def get_error_codes():
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/dependencies", response_model=APIResponse[dict[str, Any]])
@@ -199,8 +199,8 @@ async def get_dependency_status():
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/metrics", response_model=APIResponse[dict[str, Any]])
@@ -215,5 +215,5 @@ async def get_health_metrics():
             timestamp=time.time(),
             request_id=get_request_id(),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -1,18 +1,18 @@
 """系统服务"""
 import asyncio
+import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-import logging
+from typing import Any
+
 import psutil
 
-from ..models import (
-    WarmupResponse, OfflineAssetStatus, TranslationEngine,
-    HealthStatus, UserRole
-)
-from ..exceptions import (
-    InternalServerException, BadRequestException
-)
+from ..exceptions import BadRequestException
+from ..exceptions import InternalServerException
+from ..models import HealthStatus
+from ..models import OfflineAssetStatus
+from ..models import TranslationEngine
+from ..models import WarmupResponse
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class SystemService:
             "translation_engines": self._check_translation_engines
         }
 
-    async def warmup_system(self, preload_engines: List[TranslationEngine], cache_models: bool, test_connections: bool) -> WarmupResponse:
+    async def warmup_system(self, preload_engines: list[TranslationEngine], cache_models: bool, test_connections: bool) -> WarmupResponse:
         """系统预热"""
         start_time = time.time()
 
@@ -80,14 +80,14 @@ class SystemService:
             logger.info(f"系统预热完成，耗时: {duration_ms}ms")
             return response
 
-        except Exception as e:
-            logger.error(f"系统预热失败: {e}")
+        except Exception as exc:
+            logger.error(f"系统预热失败: {exc}")
             raise InternalServerException(
                 message="系统预热失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
-    async def generate_offline_assets(self, asset_types: List[str], languages: Optional[List[str]], include_dependencies: bool, compression_level: int) -> List[OfflineAssetStatus]:
+    async def generate_offline_assets(self, asset_types: list[str], languages: list[str] | None, include_dependencies: bool, compression_level: int) -> list[OfflineAssetStatus]:
         """生成离线资源"""
         try:
             logger.info(f"开始生成离线资源: {asset_types}")
@@ -113,16 +113,16 @@ class SystemService:
 
             return results
 
-        except Exception as e:
-            logger.error(f"生成离线资源失败: {e}")
-            if isinstance(e, InternalServerException):
+        except Exception as exc:
+            logger.error(f"生成离线资源失败: {exc}")
+            if isinstance(exc, InternalServerException):
                 raise
             raise InternalServerException(
                 message="生成离线资源失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
-    async def restore_offline_assets(self, asset_types: List[str]) -> bool:
+    async def restore_offline_assets(self, asset_types: list[str]) -> bool:
         """恢复离线资源"""
         try:
             logger.info(f"开始恢复离线资源: {asset_types}")
@@ -148,14 +148,14 @@ class SystemService:
 
             return success_count == len(asset_types)
 
-        except Exception as e:
-            logger.error(f"恢复离线资源失败: {e}")
-            if isinstance(e, BadRequestException):
+        except Exception as exc:
+            logger.error(f"恢复离线资源失败: {exc}")
+            if isinstance(exc, BadRequestException):
                 raise
             raise InternalServerException(
                 message="恢复离线资源失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
     async def get_health_status(self) -> HealthStatus:
         """获取健康状态"""
@@ -193,14 +193,14 @@ class SystemService:
                 performance_metrics=performance_metrics
             )
 
-        except Exception as e:
-            logger.error(f"获取健康状态失败: {e}")
+        except Exception as exc:
+            logger.error(f"获取健康状态失败: {exc}")
             raise InternalServerException(
                 message="获取健康状态失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
-    async def get_system_info(self) -> Dict[str, Any]:
+    async def get_system_info(self) -> dict[str, Any]:
         """获取系统信息"""
         try:
             # 获取系统资源使用情况
@@ -238,12 +238,12 @@ class SystemService:
                 }
             }
 
-        except Exception as e:
-            logger.error(f"获取系统信息失败: {e}")
+        except Exception as exc:
+            logger.error(f"获取系统信息失败: {exc}")
             raise InternalServerException(
                 message="获取系统信息失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
     async def _preload_engine_model(self, engine: TranslationEngine):
         """预加载翻译引擎模型"""
@@ -258,9 +258,10 @@ class SystemService:
         await asyncio.sleep(0.5)  # 模拟测试时间
         return True
 
-    async def _generate_asset_type(self, asset_type: str, languages: Optional[List[str]], include_dependencies: bool, compression_level: int) -> OfflineAssetStatus:
+    async def _generate_asset_type(self, asset_type: str, languages: list[str] | None, include_dependencies: bool, compression_level: int) -> OfflineAssetStatus:
         """生成特定类型的离线资源"""
-        from datetime import datetime, timedelta
+        from datetime import datetime
+        from datetime import timedelta
 
         logger.info(f"生成离线资源: {asset_type}, 语言: {languages}")
 
@@ -308,7 +309,7 @@ class SystemService:
         # 模拟资源恢复过程
         await asyncio.sleep(1)
 
-    def _get_memory_usage(self) -> Dict[str, Any]:
+    def _get_memory_usage(self) -> dict[str, Any]:
         """获取内存使用情况"""
         memory = psutil.virtual_memory()
         process = psutil.Process()
@@ -329,7 +330,7 @@ class SystemService:
             }
         }
 
-    def _get_performance_metrics(self) -> Dict[str, float]:
+    def _get_performance_metrics(self) -> dict[str, float]:
         """获取性能指标"""
         cpu_percent = psutil.cpu_percent(interval=1)
         memory_percent = psutil.virtual_memory().percent
@@ -340,7 +341,7 @@ class SystemService:
             "load_average": getattr(psutil, 'getloadavg', lambda: (0, 0, 0))()[0] if hasattr(psutil, 'getloadavg') else 0
         }
 
-    async def _check_database(self) -> Dict[str, Any]:
+    async def _check_database(self) -> dict[str, Any]:
         """检查数据库连接"""
         # TODO: 实现实际的数据库连接检查
         return {
@@ -349,7 +350,7 @@ class SystemService:
             "connections": 10
         }
 
-    async def _check_redis(self) -> Dict[str, Any]:
+    async def _check_redis(self) -> dict[str, Any]:
         """检查Redis连接"""
         # TODO: 实现实际的Redis连接检查
         return {
@@ -358,7 +359,7 @@ class SystemService:
             "memory_usage": "100MB"
         }
 
-    async def _check_storage(self) -> Dict[str, Any]:
+    async def _check_storage(self) -> dict[str, Any]:
         """检查存储连接"""
         # TODO: 实现实际的存储连接检查
         return {
@@ -367,7 +368,7 @@ class SystemService:
             "used_space": "5GB"
         }
 
-    async def _check_translation_engines(self) -> Dict[str, Any]:
+    async def _check_translation_engines(self) -> dict[str, Any]:
         """检查翻译引擎连接"""
         # TODO: 实现实际的翻译引擎连接检查
         engine_status = {}

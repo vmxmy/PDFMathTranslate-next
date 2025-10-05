@@ -1,10 +1,15 @@
 """响应数据模型"""
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, field_validator
+from typing import Any
 
-from .enums import TaskStatus, TranslationEngine, TranslationStage, UserRole
-from .schemas import BaseSchema, FileUploadResponse, TaskStatistics
+from pydantic import Field
+from pydantic import field_validator
+
+from .enums import TaskStatus
+from .enums import TranslationEngine
+from .enums import TranslationStage
+from .enums import UserRole
+from .schemas import BaseSchema
 
 
 class StageProgress(BaseSchema):
@@ -12,17 +17,17 @@ class StageProgress(BaseSchema):
     stage: TranslationStage = Field(description="阶段名称")
     progress: float = Field(0.0, ge=0.0, le=100.0, description="阶段进度百分比")
     status: str = Field(description="阶段状态描述")
-    started_at: Optional[datetime] = Field(None, description="阶段开始时间")
-    completed_at: Optional[datetime] = Field(None, description="阶段完成时间")
-    details: Optional[Dict[str, Any]] = Field(None, description="阶段详细信息")
+    started_at: datetime | None = Field(None, description="阶段开始时间")
+    completed_at: datetime | None = Field(None, description="阶段完成时间")
+    details: dict[str, Any] | None = Field(None, description="阶段详细信息")
 
 
 class TranslationProgress(BaseSchema):
     """翻译进度模型"""
     overall_progress: float = Field(0.0, ge=0.0, le=100.0, description="整体进度百分比")
     current_stage: TranslationStage = Field(description="当前阶段")
-    stage_details: List[StageProgress] = Field(default_factory=list, description="各阶段详细进度")
-    estimated_remaining_time: Optional[int] = Field(None, description="预计剩余时间（秒）")
+    stage_details: list[StageProgress] = Field(default_factory=list, description="各阶段详细进度")
+    estimated_remaining_time: int | None = Field(None, description="预计剩余时间（秒）")
     processed_pages: int = Field(0, description="已处理页数")
     total_pages: int = Field(0, description="总页数")
     processed_chars: int = Field(0, description="已处理字符数")
@@ -30,13 +35,15 @@ class TranslationProgress(BaseSchema):
     processed_paragraphs: int = Field(0, description="已处理段落数")
     total_paragraphs: int = Field(0, description="总段落数")
 
-    @field_validator('estimated_remaining_time')
+    @field_validator("estimated_remaining_time")
+    @classmethod
     def validate_remaining_time(cls, v):
         if v is not None and v < 0:
             raise ValueError('剩余时间不能为负数')
         return v
 
-    @field_validator('processed_pages', 'processed_chars', 'processed_paragraphs')
+    @field_validator("processed_pages", "processed_chars", "processed_paragraphs")
+    @classmethod
     def validate_processed_values(cls, v):
         if v < 0:
             raise ValueError('处理数量不能为负数')
@@ -56,13 +63,13 @@ class TranslationFile(BaseSchema):
 
 class TranslationResult(BaseSchema):
     """翻译结果模型"""
-    files: List[TranslationFile] = Field(description="翻译文件列表")
+    files: list[TranslationFile] = Field(description="翻译文件列表")
     processing_time: float = Field(description="处理时间（秒）")
     total_pages: int = Field(description="总页数")
     total_chars: int = Field(description="总字符数")
     engine_used: TranslationEngine = Field(description="使用的翻译引擎")
-    quality_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="质量评分")
-    warnings: List[str] = Field(default_factory=list, description="警告信息")
+    quality_score: float | None = Field(None, ge=0.0, le=1.0, description="质量评分")
+    warnings: list[str] = Field(default_factory=list, description="警告信息")
 
 
 class TranslationTask(BaseSchema):
@@ -71,23 +78,25 @@ class TranslationTask(BaseSchema):
     status: TaskStatus = Field(description="任务状态")
     created_at: datetime = Field(description="创建时间")
     updated_at: datetime = Field(description="更新时间")
-    started_at: Optional[datetime] = Field(None, description="开始处理时间")
-    completed_at: Optional[datetime] = Field(None, description="完成时间")
+    started_at: datetime | None = Field(None, description="开始处理时间")
+    completed_at: datetime | None = Field(None, description="完成时间")
     progress: TranslationProgress = Field(description="任务进度")
-    result: Optional[TranslationResult] = Field(None, description="翻译结果")
+    result: TranslationResult | None = Field(None, description="翻译结果")
     user_id: str = Field(description="用户ID")
     priority: int = Field(description="任务优先级")
-    estimated_duration: Optional[int] = Field(None, description="预计处理时间（秒）")
+    estimated_duration: int | None = Field(None, description="预计处理时间（秒）")
     retry_count: int = Field(0, description="重试次数")
     max_retries: int = Field(3, description="最大重试次数")
 
-    @field_validator('priority')
+    @field_validator("priority")
+    @classmethod
     def validate_priority(cls, v):
         if not 1 <= v <= 5:
             raise ValueError('优先级必须在1-5之间')
         return v
 
-    @field_validator('retry_count', 'max_retries')
+    @field_validator("retry_count", "max_retries")
+    @classmethod
     def validate_retries(cls, v):
         if v < 0:
             raise ValueError('重试次数不能为负数')
@@ -101,17 +110,17 @@ class TranslationPreview(BaseSchema):
     source_language: str = Field(description="源语言")
     target_language: str = Field(description="目标语言")
     engine_used: TranslationEngine = Field(description="使用的翻译引擎")
-    confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="翻译置信度")
+    confidence: float | None = Field(None, ge=0.0, le=1.0, description="翻译置信度")
 
 
 class WarmupResponse(BaseSchema):
     """系统预热响应"""
     status: str = Field(description="预热状态")
-    preloaded_engines: List[TranslationEngine] = Field(description="预加载的翻译引擎")
-    cache_status: Dict[str, bool] = Field(description="缓存状态")
-    connection_tests: Dict[str, bool] = Field(description="连接测试结果")
+    preloaded_engines: list[TranslationEngine] = Field(description="预加载的翻译引擎")
+    cache_status: dict[str, bool] = Field(description="缓存状态")
+    connection_tests: dict[str, bool] = Field(description="连接测试结果")
     duration_ms: int = Field(description="预热耗时（毫秒）")
-    memory_usage: Dict[str, Any] = Field(description="内存使用情况")
+    memory_usage: dict[str, Any] = Field(description="内存使用情况")
 
 
 class OfflineAssetStatus(BaseSchema):
@@ -119,18 +128,18 @@ class OfflineAssetStatus(BaseSchema):
     asset_type: str = Field(description="资源类型")
     total_size: int = Field(description="总大小（字节）")
     file_count: int = Field(description="文件数量")
-    languages: List[str] = Field(description="包含的语言")
+    languages: list[str] = Field(description="包含的语言")
     generated_at: datetime = Field(description="生成时间")
-    expires_at: Optional[datetime] = Field(None, description="过期时间")
-    compression_ratio: Optional[float] = Field(None, description="压缩比率")
+    expires_at: datetime | None = Field(None, description="过期时间")
+    compression_ratio: float | None = Field(None, description="压缩比率")
 
 
 class ConfigResponse(BaseSchema):
     """配置响应模型"""
-    current_config: Dict[str, Any] = Field(description="当前配置")
-    schema: Dict[str, Any] = Field(description="配置schema")
+    current_config: dict[str, Any] = Field(description="当前配置")
+    schema: dict[str, Any] = Field(description="配置schema")
     last_updated: datetime = Field(description="最后更新时间")
-    validation_errors: Optional[List[str]] = Field(None, description="验证错误")
+    validation_errors: list[str] | None = Field(None, description="验证错误")
 
 
 class HealthStatus(BaseSchema):
@@ -139,8 +148,8 @@ class HealthStatus(BaseSchema):
     timestamp: datetime = Field(description="检查时间戳")
     version: str = Field(description="API版本")
     uptime_seconds: float = Field(description="运行时间（秒）")
-    dependencies: Dict[str, Any] = Field(description="依赖服务状态")
-    performance_metrics: Dict[str, float] = Field(description="性能指标")
+    dependencies: dict[str, Any] = Field(description="依赖服务状态")
+    performance_metrics: dict[str, float] = Field(description="性能指标")
 
 
 class WebhookTestResponse(BaseSchema):
@@ -148,7 +157,7 @@ class WebhookTestResponse(BaseSchema):
     webhook_url: str = Field(description="测试的webhook URL")
     status_code: int = Field(description="HTTP状态码")
     response_time_ms: int = Field(description="响应时间（毫秒）")
-    response_body: Optional[str] = Field(None, description="响应体")
+    response_body: str | None = Field(None, description="响应体")
     success: bool = Field(description="是否成功")
 
 
@@ -157,18 +166,18 @@ class BatchOperationResponse(BaseSchema):
     total_tasks: int = Field(description="总任务数")
     successful_tasks: int = Field(description="成功任务数")
     failed_tasks: int = Field(description="失败任务数")
-    results: List[Dict[str, Any]] = Field(description="详细结果")
+    results: list[dict[str, Any]] = Field(description="详细结果")
 
 
 class UserInfo(BaseSchema):
     """用户信息模型"""
     user_id: str = Field(description="用户ID")
     role: UserRole = Field(description="用户角色")
-    permissions: List[str] = Field(description="权限列表")
+    permissions: list[str] = Field(description="权限列表")
     rate_limit: int = Field(description="速率限制（每分钟）")
     max_file_size: int = Field(description="最大文件大小（字节）")
     max_concurrent_tasks: int = Field(description="最大并发任务数")
-    allowed_engines: List[TranslationEngine] = Field(description="允许的翻译引擎")
+    allowed_engines: list[TranslationEngine] = Field(description="允许的翻译引擎")
     webhook_support: bool = Field(description="是否支持webhook")
     quota_used: int = Field(description="已使用配额")
     quota_limit: int = Field(description="配额限制")

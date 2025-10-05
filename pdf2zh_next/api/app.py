@@ -3,18 +3,16 @@
 import logging
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime
+from datetime import timezone
 
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.encoders import jsonable_encoder
 
 from .dependencies import get_request_id
-from .services import config_service
-from .services import system_service
-from .services import task_manager
 from .exceptions import APIException
 from .exceptions import InternalServerException
 from .middleware import setup_middlewares
@@ -24,6 +22,9 @@ from .routers import config_router
 from .routers import health_router
 from .routers import system_router
 from .routers import translation_router
+from .services import config_service
+from .services import system_service
+from .services import task_manager
 
 # 配置日志
 logging.basicConfig(
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
     logger.info("正在启动PDFMathTranslate API服务...")
@@ -114,7 +115,7 @@ def create_app() -> FastAPI:
 
     # 注册全局异常处理
     @app.exception_handler(APIException)
-    async def api_exception_handler(request: Request, exc: APIException):
+    async def api_exception_handler(_request: Request, exc: APIException):
         """处理API异常"""
         request_id = get_request_id()
 
@@ -143,7 +144,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(InternalServerException)
     async def internal_exception_handler(
-        request: Request, exc: InternalServerException
+        _request: Request, exc: InternalServerException
     ):
         """处理内部服务器异常"""
         request_id = get_request_id()
@@ -169,7 +170,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(Exception)
-    async def general_exception_handler(request: Request, exc: Exception):
+    async def general_exception_handler(_request: Request, exc: Exception):
         """处理未捕获的异常"""
         request_id = get_request_id()
 
@@ -294,7 +295,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "pdf2zh_next.api.app:app",
-        host="0.0.0.0",
+        host="0.0.0.0",  # noqa: S104 - Required for containerized deployments
         port=8000,
         reload=True,
         log_level="info",

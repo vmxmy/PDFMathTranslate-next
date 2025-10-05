@@ -1,13 +1,13 @@
 """翻译服务"""
 import asyncio
 import json
-import zipfile
-import shutil
-import tempfile
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 import logging
+import shutil
+import zipfile
+from datetime import datetime
+from datetime import timedelta
+from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -15,27 +15,26 @@ from fastapi import UploadFile
 from pdf2zh_next.config.model import SettingsModel
 from pdf2zh_next.high_level import do_translate_async_stream
 
-from ..models import (
-    TranslationRequest,
-    TranslationTask,
-    TranslationPreview,
-    TranslationProgress,
-    TranslationResult,
-    TranslationFile,
-    TranslationEngine,
-    BatchOperationRequest,
-    TranslationPreviewRequest,
-)
+from ..exceptions import BadRequestException
+from ..exceptions import FileFormatException
+from ..exceptions import InternalServerException
+from ..exceptions import NotFoundException
+from ..exceptions import TranslationEngineException
+from ..models import BatchOperationRequest
 from ..models import CleanupResult
-from ..models.enums import UserRole, TranslationStage, TaskStatus
-from ..exceptions import (
-    FileFormatException,
-    TranslationEngineException,
-    InternalServerException,
-    BadRequestException,
-    NotFoundException,
-)
-from ..utils import build_settings_model, ENGINE_TYPE_MAP
+from ..models import TranslationEngine
+from ..models import TranslationFile
+from ..models import TranslationPreview
+from ..models import TranslationPreviewRequest
+from ..models import TranslationProgress
+from ..models import TranslationRequest
+from ..models import TranslationResult
+from ..models import TranslationTask
+from ..models.enums import TaskStatus
+from ..models.enums import TranslationStage
+from ..models.enums import UserRole
+from ..utils import ENGINE_TYPE_MAP
+from ..utils import build_settings_model
 from .config import config_service
 from .task_manager import task_manager
 
@@ -55,18 +54,18 @@ class TranslationService:
             TranslationEngine.TENCENT: "腾讯翻译"
         }
         self.storage_root = Path("storage/tasks")
-        self.task_dirs: Dict[str, Path] = {}
-        self.task_configs: Dict[str, Dict[str, Any]] = {}
-        self.file_registry: Dict[str, Dict[str, Path]] = {}
-        self.task_settings: Dict[str, SettingsModel] = {}
-        self.task_inputs: Dict[str, Path] = {}
+        self.task_dirs: dict[str, Path] = {}
+        self.task_configs: dict[str, dict[str, Any]] = {}
+        self.file_registry: dict[str, dict[str, Path]] = {}
+        self.task_settings: dict[str, SettingsModel] = {}
+        self.task_inputs: dict[str, Path] = {}
         self.storage_root.mkdir(parents=True, exist_ok=True)
         task_manager.register_translation_service(self)
 
     async def create_task(
         self,
         request: TranslationRequest,
-        user_info: Dict[str, Any]
+        user_info: dict[str, Any]
     ) -> TranslationTask:
         """创建翻译任务"""
         try:
@@ -75,11 +74,11 @@ class TranslationService:
                     request.translation_engine = TranslationEngine(
                         request.translation_engine.lower()
                     )
-                except ValueError:
+                except ValueError as exc:
                     raise BadRequestException(
                         message=f"不支持的翻译引擎: {request.translation_engine}",
                         details={"supported_engines": list(self.engines.keys())},
-                    )
+                    ) from exc
 
             # 验证文件
             await self._validate_files(request.files, user_info)
@@ -110,25 +109,25 @@ class TranslationService:
             logger.info(f"创建翻译任务成功: {task.task_id}, 用户: {user_info['user_id']}")
             return task
 
-        except Exception as e:
-            logger.error(f"创建翻译任务失败: {e}")
-            if isinstance(e, (FileFormatException, BadRequestException)):
+        except Exception as exc:
+            logger.error(f"创建翻译任务失败: {exc}")
+            if isinstance(exc, (FileFormatException, BadRequestException)):
                 raise
             raise InternalServerException(
                 message="创建翻译任务失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
-    async def get_task(self, task_id: str, user_info: Dict[str, Any]) -> TranslationTask:
+    async def get_task(self, task_id: str, user_info: dict[str, Any]) -> TranslationTask:
         """获取任务状态"""
         return await task_manager.get_task(task_id, user_info["user_id"])
 
-    async def get_task_progress(self, task_id: str, user_info: Dict[str, Any]) -> TranslationProgress:
+    async def get_task_progress(self, task_id: str, user_info: dict[str, Any]) -> TranslationProgress:
         """获取任务进度"""
         task = await task_manager.get_task(task_id, user_info["user_id"])
         return task.progress
 
-    async def get_task_result(self, task_id: str, user_info: Dict[str, Any]) -> TranslationResult:
+    async def get_task_result(self, task_id: str, user_info: dict[str, Any]) -> TranslationResult:
         """获取任务结果"""
         task = await task_manager.get_task(task_id, user_info["user_id"])
 
@@ -151,11 +150,11 @@ class TranslationService:
 
         return task.result
 
-    async def cancel_task(self, task_id: str, user_info: Dict[str, Any]) -> bool:
+    async def cancel_task(self, task_id: str, user_info: dict[str, Any]) -> bool:
         """取消任务"""
         return await task_manager.cancel_task(task_id, user_info["user_id"])
 
-    async def delete_task(self, task_id: str, user_info: Dict[str, Any]) -> bool:
+    async def delete_task(self, task_id: str, user_info: dict[str, Any]) -> bool:
         """删除任务并清理产物"""
         task = await task_manager.get_task(task_id, user_info["user_id"])
         if task.status not in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
@@ -166,11 +165,11 @@ class TranslationService:
 
     async def list_tasks(
         self,
-        user_info: Dict[str, Any],
+        user_info: dict[str, Any],
         page: int = 1,
         page_size: int = 20,
         **filters
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """列出用户任务"""
         from ..models import TaskFilterRequest
 
@@ -185,19 +184,19 @@ class TranslationService:
     async def batch_operation(
         self,
         request: BatchOperationRequest,
-        user_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        user_info: dict[str, Any]
+    ) -> dict[str, Any]:
         """批量操作任务"""
         return await task_manager.batch_operation(request, user_info["user_id"])
 
-    async def get_statistics(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
+    async def get_statistics(self, user_info: dict[str, Any]) -> dict[str, Any]:
         """获取用户统计信息"""
         return await task_manager.get_statistics(user_info["user_id"])
 
     async def preview_translation(
         self,
         request: TranslationPreviewRequest,
-        user_info: Dict[str, Any]
+        user_info: dict[str, Any]
     ) -> TranslationPreview:
         """预览翻译结果"""
         try:
@@ -221,15 +220,15 @@ class TranslationService:
             logger.info(f"翻译预览成功: 用户 {user_info['user_id']}, 引擎 {request.translation_engine}")
             return preview
 
-        except Exception as e:
-            logger.error(f"翻译预览失败: {e}")
+        except Exception as exc:
+            logger.error(f"翻译预览失败: {exc}")
             raise TranslationEngineException(
                 message="翻译预览失败",
                 engine=request.translation_engine,
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
-    async def _validate_files(self, files: List[UploadFile], user_info: Dict[str, Any]):
+    async def _validate_files(self, files: list[UploadFile], user_info: dict[str, Any]):
         """验证文件"""
         if not files:
             raise BadRequestException(message="必须上传至少一个文件")
@@ -277,7 +276,7 @@ class TranslationService:
         await file.seek(0)
         return size
 
-    async def _estimate_processing_time(self, files: List[UploadFile]) -> int:
+    async def _estimate_processing_time(self, files: list[UploadFile]) -> int:
         """估算处理时间"""
         total_size = 0
         for file in files:
@@ -291,7 +290,7 @@ class TranslationService:
         # 最小30秒，最大2小时
         return max(30, min(estimated_seconds, 7200))
 
-    async def _save_files(self, task_id: str, files: List[UploadFile]):
+    async def _save_files(self, task_id: str, files: list[UploadFile]):
         """保存上传的源文件到任务目录"""
         task_dir = self.storage_root / task_id
         input_dir = task_dir / "input"
@@ -346,7 +345,7 @@ class TranslationService:
     async def _translate_text(
         self,
         text: str,
-        source_language: Optional[str],
+        source_language: str | None,
         target_language: str,
         engine: TranslationEngine
     ) -> str:
@@ -437,7 +436,7 @@ class TranslationService:
         translate_result: Any,
         settings: SettingsModel,
     ) -> TranslationResult:
-        files: List[TranslationFile] = []
+        files: list[TranslationFile] = []
         registry = self.file_registry.setdefault(task_id, {})
         artifact_sources: list[Path] = []
         config = self.task_configs.get(task_id, {})
@@ -451,7 +450,7 @@ class TranslationService:
             ("auto_extracted_glossary_path", "glossary.csv"),
         ]
 
-        for attr, default_name in attachment_map:
+        for attr, _default_name in attachment_map:
             path_str = getattr(translate_result, attr, None)
             if not path_str:
                 continue
@@ -490,6 +489,14 @@ class TranslationService:
             except ValueError:
                 engine_key = TranslationEngine.GOOGLE.value
         engine_used = TranslationEngine(engine_key)
+
+        logger.debug(
+            "Building translation result | task=%s | engine_name=%s | engine_key=%s | config_engine=%s",
+            task_id,
+            engine_name,
+            engine_key,
+            config.get("translation_engine"),
+        )
 
         if artifact_sources:
             unique_sources: dict[str, Path] = {}
@@ -545,6 +552,37 @@ class TranslationService:
             default=0,
         )
 
+        def _summarize_attr(name: str) -> str:
+            value = getattr(translate_result, name, None)
+            if value is None:
+                return "missing"
+            if isinstance(value, dict):
+                return f"dict[{len(value)}]"
+            if isinstance(value, (list, tuple, set)):
+                return f"sequence[{len(value)}]"
+            if isinstance(value, (int, float)):
+                return str(value)
+            return type(value).__name__
+
+        logger.debug(
+            "Translation metrics | task=%s | pages=%s | chars=%s | available_attrs=%s",
+            task_id,
+            total_pages,
+            total_chars,
+            {
+                name: _summarize_attr(name)
+                for name in (
+                    "total_pages",
+                    "page_count",
+                    "pages",
+                    "num_pages",
+                    "total_characters",
+                    "character_count",
+                    "total_chars",
+                )
+            },
+        )
+
         if total_pages > 0:
             for translation_file in files:
                 if translation_file.page_count == 0:
@@ -561,7 +599,7 @@ class TranslationService:
         )
 
     async def get_translated_file_path(
-        self, task_id: str, file_id: str, user_info: Dict[str, Any]
+        self, task_id: str, file_id: str, user_info: dict[str, Any]
     ) -> Path:
         """获取可下载的翻译文件路径，检查用户权限"""
         await task_manager.get_task(task_id, user_info["user_id"])
@@ -571,7 +609,7 @@ class TranslationService:
             raise NotFoundException(message="翻译文件不存在", resource="translation_file")
         return path
 
-    async def clean_task_artifacts(self, task_id: str, user_info: Dict[str, Any]) -> CleanupResult:
+    async def clean_task_artifacts(self, task_id: str, user_info: dict[str, Any]) -> CleanupResult:
         """清理指定任务的临时与输出文件并返回详细状态"""
 
         allow_admin_override = user_info.get("role") == UserRole.ADMIN
@@ -585,7 +623,7 @@ class TranslationService:
         try:
             task = await task_manager.get_task(task_id, user_info["user_id"])
             task_exists = True
-        except NotFoundException:
+        except NotFoundException as exc:
             if file_exists and allow_admin_override:
                 shutil.rmtree(task_dir, ignore_errors=True)
                 self.task_dirs.pop(task_id, None)
@@ -607,7 +645,7 @@ class TranslationService:
                 message=message,
                 resource="translation_task",
                 resource_id=task_id,
-            )
+            ) from exc
 
         if task.status not in {
             TaskStatus.COMPLETED,
@@ -652,11 +690,11 @@ class TranslationService:
         elif isinstance(engine_member, str):
             try:
                 engine_key_value = TranslationEngine(engine_member.lower()).value
-            except ValueError:
+            except ValueError as exc:
                 raise BadRequestException(
                     message=f"不支持的翻译引擎: {engine_member}",
                     details={"supported_engines": list(self.engines.keys())},
-                )
+                ) from exc
         else:
             raise BadRequestException(
                 message="翻译引擎参数无效",
@@ -667,7 +705,7 @@ class TranslationService:
             "Initializing settings for %s with engine %s", task_id, engine_key_value
         )
 
-        translation_overrides: Dict[str, Any] = {
+        translation_overrides: dict[str, Any] = {
             "translation": {
                 "lang_out": request.target_language,
             },
@@ -686,7 +724,7 @@ class TranslationService:
                 "no_remove_non_formula_lines"
             ] = True
 
-        extra_overrides: Dict[str, Any] | None = None
+        extra_overrides: dict[str, Any] | None = None
         if request.settings_json:
             try:
                 extra_overrides = json.loads(request.settings_json)
@@ -694,7 +732,7 @@ class TranslationService:
                 raise BadRequestException(
                     message="settings_json 不是合法的 JSON",
                     details={"error": str(exc)},
-                )
+                ) from exc
             if extra_overrides is not None and not isinstance(extra_overrides, dict):
                 raise BadRequestException(
                     message="settings_json 必须是 JSON 对象",
@@ -703,7 +741,7 @@ class TranslationService:
         engine_key = engine_key_value.lower()
         engine_type = ENGINE_TYPE_MAP.get(engine_key, "Google")
         engine_config = translation_cfg.get("engines", {}).get(engine_key, {})
-        engine_payload: Dict[str, Any] = {
+        engine_payload: dict[str, Any] = {
             "translate_engine_type": engine_type,
         }
         for field, cfg_key in (

@@ -1,17 +1,14 @@
 """配置服务"""
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import logging
+from typing import Any
 
-from pydantic import BaseModel, ValidationError
-
-from ..models import ConfigResponse, ConfigUpdateRequest, ValidationMode
-from ..exceptions import (
-    BadRequestException, InternalServerException,
-    create_validation_exception
-)
+from ..exceptions import InternalServerException
+from ..models import ConfigResponse
+from ..models import ConfigUpdateRequest
+from ..models import ValidationMode
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +28,8 @@ class ConfigService:
         """加载配置文件"""
         try:
             if self.config_file.exists():
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    self.config_data = json.load(f)
+                with self.config_file.open(encoding="utf-8") as file:
+                    self.config_data = json.load(file)
                 logger.info("配置文件加载成功")
             else:
                 # 使用默认配置
@@ -47,8 +44,8 @@ class ConfigService:
         """加载配置schema"""
         try:
             if self.config_schema_file.exists():
-                with open(self.config_schema_file, 'r', encoding='utf-8') as f:
-                    self.config_schema = json.load(f)
+                with self.config_schema_file.open(encoding="utf-8") as file:
+                    self.config_schema = json.load(file)
                 logger.info("配置schema加载成功")
             else:
                 # 使用默认schema
@@ -63,31 +60,31 @@ class ConfigService:
         """保存配置文件"""
         try:
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.config_data, f, indent=2, ensure_ascii=False)
+            with self.config_file.open("w", encoding="utf-8") as file:
+                json.dump(self.config_data, file, indent=2, ensure_ascii=False)
             logger.info("配置文件保存成功")
-        except Exception as e:
-            logger.error(f"保存配置文件失败: {e}")
+        except Exception as exc:
+            logger.error(f"保存配置文件失败: {exc}")
             raise InternalServerException(
                 message="保存配置失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
     def _save_schema(self):
         """保存配置schema"""
         try:
             self.config_schema_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_schema_file, 'w', encoding='utf-8') as f:
-                json.dump(self.config_schema, f, indent=2, ensure_ascii=False)
+            with self.config_schema_file.open("w", encoding="utf-8") as file:
+                json.dump(self.config_schema, file, indent=2, ensure_ascii=False)
             logger.info("配置schema保存成功")
-        except Exception as e:
-            logger.error(f"保存配置schema失败: {e}")
+        except Exception as exc:
+            logger.error(f"保存配置schema失败: {exc}")
             raise InternalServerException(
                 message="保存配置schema失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> dict[str, Any]:
         """获取默认配置"""
         return {
             "translation": {
@@ -185,7 +182,7 @@ class ConfigService:
             }
         }
 
-    def _get_default_schema(self) -> Dict[str, Any]:
+    def _get_default_schema(self) -> dict[str, Any]:
         """获取默认配置schema"""
         return {
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -242,7 +239,7 @@ class ConfigService:
             validation_errors=None
         )
 
-    def get_config_schema(self) -> Dict[str, Any]:
+    def get_config_schema(self) -> dict[str, Any]:
         """获取配置schema"""
         return self.config_schema
 
@@ -285,12 +282,12 @@ class ConfigService:
                 validation_errors=validation_errors if validation_errors else None
             )
 
-        except Exception as e:
-            logger.error(f"配置更新失败: {e}")
+        except Exception as exc:
+            logger.error(f"配置更新失败: {exc}")
             raise InternalServerException(
                 message="配置更新失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
     def reset_config(self) -> ConfigResponse:
         """重置为默认配置"""
@@ -302,14 +299,14 @@ class ConfigService:
             logger.info("配置重置成功")
             return self.get_config()
 
-        except Exception as e:
-            logger.error(f"配置重置失败: {e}")
+        except Exception as exc:
+            logger.error(f"配置重置失败: {exc}")
             raise InternalServerException(
                 message="配置重置失败",
-                details={"error": str(e)}
-            )
+                details={"error": str(exc)}
+            ) from exc
 
-    def _validate_and_update_section(self, section: str, new_config: Dict[str, Any], validation_mode: ValidationMode) -> List[str]:
+    def _validate_and_update_section(self, section: str, new_config: dict[str, Any], validation_mode: ValidationMode) -> list[str]:
         """验证和更新配置段"""
         errors = []
 
@@ -364,19 +361,19 @@ class ConfigService:
             return isinstance(value, dict)
         return True
 
-    def get_translation_config(self) -> Dict[str, Any]:
+    def get_translation_config(self) -> dict[str, Any]:
         """获取翻译配置"""
         return self.config_data.get("translation", {})
 
-    def get_system_config(self) -> Dict[str, Any]:
+    def get_system_config(self) -> dict[str, Any]:
         """获取系统配置"""
         return self.config_data.get("system", {})
 
-    def get_api_config(self) -> Dict[str, Any]:
+    def get_api_config(self) -> dict[str, Any]:
         """获取API配置"""
         return self.config_data.get("api", {})
 
-    def get_logging_config(self) -> Dict[str, Any]:
+    def get_logging_config(self) -> dict[str, Any]:
         """获取日志配置"""
         return self.config_data.get("logging", {})
 

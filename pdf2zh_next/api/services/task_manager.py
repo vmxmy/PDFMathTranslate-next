@@ -5,7 +5,8 @@ import logging
 import uuid
 from datetime import datetime
 from datetime import timedelta
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
+from typing import Any
 
 if TYPE_CHECKING:  # pragma: no cover
     from .translation import TranslationService
@@ -22,7 +23,6 @@ from ..models import TranslationProgress
 from ..models import TranslationResult
 from ..models import TranslationStage
 from ..models import TranslationTask
-from ..models.enums import TranslationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class TaskManager:
         self.max_concurrent_tasks = 10
         self.task_timeout = 3600  # 1小时
         self.cleanup_interval = 300  # 5分钟
-        self.translation_service: "TranslationService" | None = None
+        self.translation_service: TranslationService | None = None
 
     async def initialize(self):
         """初始化任务管理器"""
