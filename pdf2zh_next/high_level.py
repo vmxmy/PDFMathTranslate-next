@@ -4,7 +4,6 @@ import logging.handlers
 import multiprocessing
 import multiprocessing.connection
 import multiprocessing.queues
-import os
 import queue
 import threading
 import traceback
@@ -14,8 +13,6 @@ from datetime import timezone
 from functools import partial
 from logging.handlers import QueueHandler
 from pathlib import Path
-
-import psutil
 
 # Ensure onnxruntime stays on CPU to avoid GPU discovery when BabelDOC loads.
 try:
@@ -169,11 +166,6 @@ def _translate_wrapper(
         queue_handler = QueueHandler(logger_queue)
         logging.basicConfig(level=logging.INFO, handlers=[queue_handler])
 
-        # Monitor memory usage
-        process = psutil.Process()
-        initial_memory = process.memory_info().rss / 1024 / 1024  # MB
-        logger.info(f"Translation subprocess started with memory: {initial_memory:.1f}MB")
-
         config = create_babeldoc_config(settings, file)
 
         def cancel_recv_thread():
@@ -187,32 +179,6 @@ def _translate_wrapper(
 
         cancel_t = threading.Thread(target=cancel_recv_thread, daemon=True)
         cancel_t.start()
-
-        # Memory monitoring thread
-        def memory_monitor_thread():
-            try:
-                while not cancel_event.is_set():
-                    current_memory = process.memory_info().rss / 1024 / 1024  # MB
-                    memory_increase = current_memory - initial_memory
-
-                    # Log memory usage every 10 seconds
-                    if memory_increase > 100:  # Log if memory increased by >100MB
-                        logger.warning(f"Memory usage: {current_memory:.1f}MB (increase: {memory_increase:.1f}MB)")
-
-                    # Check if we're approaching memory limits
-                    memory_limit_mb = int(os.environ.get('TRANSLATION_MEMORY_LIMIT_MB', '1024'))
-                    if current_memory > memory_limit_mb:
-                        logger.error(f"Memory limit exceeded: {current_memory:.1f}MB > {memory_limit_mb}MB")
-                        cancel_event.set()
-                        config.cancel_translation()
-                        break
-
-                    cancel_event.wait(10)  # Check every 10 seconds
-            except Exception as e:
-                logger.error(f"Error in memory_monitor_thread: {e}")
-
-        memory_t = threading.Thread(target=memory_monitor_thread, daemon=True)
-        memory_t.start()
 
         async def translate_wrapper_async():
             try:
@@ -276,14 +242,6 @@ def _translate_wrapper(
             if not cancel_event.is_set():
                 logger.error(f"Failed to send error through pipe: {pipe_err}")
     finally:
-        # Report final memory usage
-        try:
-            final_memory = process.memory_info().rss / 1024 / 1024  # MB
-            memory_increase = final_memory - initial_memory
-            logger.info(f"Translation subprocess finished. Memory: {final_memory:.1f}MB (increase: {memory_increase:.1f}MB)")
-        except Exception as e:
-            logger.debug(f"Failed to get final memory usage: {e}")
-
         logger.debug("sub process send close")
         try:
             pipe_progress_send.send(None)
@@ -505,18 +463,10 @@ async def _translate_in_subprocess(
         if not cancel_flag and not completed_successfully:
             # Check if the process crashed but no error was captured through IPC
             if translate_process.exitcode not in (0, None) and not cb.has_error():
-                # Special handling for SIGKILL (exit code -9) which usually means OOM
-                if translate_process.exitcode == -9:
-                    error = SubprocessCrashError(
-                        "Translation subprocess was killed (exit code -9). This usually indicates out-of-memory error. "
-                        "Consider reducing file size or increasing memory allocation.",
-                        exit_code=translate_process.exitcode,
-                    )
-                else:
-                    error = SubprocessCrashError(
-                        f"Translation subprocess crashed with exit code {translate_process.exitcode}",
-                        exit_code=translate_process.exitcode,
-                    )
+                error = SubprocessCrashError(
+                    f"Translation subprocess crashed with exit code {translate_process.exitcode}",
+                    exit_code=translate_process.exitcode,
+                )
                 # We need to raise the error as we're outside the async for loop now
                 raise error
             elif cb.has_error():

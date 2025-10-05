@@ -116,7 +116,7 @@ Por favor, NÃO envie PRs relacionados aos tipos mencionados acima.
 - **const.py**: Algumas constantes.
 - **main.py**: Fornece a ferramenta de linha de comando.
 - **high_level.py**: Interfaces de alto nível baseadas no BabelDOC.
-- **http_api.py**: Fornece API HTTP (não iniciada).
+- **api/app.py**: Fornece o serviço de API HTTP.
 
 ## Entre em contato conosco
 

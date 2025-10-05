@@ -116,7 +116,7 @@
 - **const.py**: 일부 상수.
 - **main.py**: 명령줄 도구를 제공.
 - **high_level.py**: BabelDOC 기반의 고수준 인터페이스.
-- **http_api.py**: HTTP API 를 제공 (시작되지 않음).
+- **api/app.py**: HTTP API 서비스를 제공.
 
 ## 문의하기
 

@@ -1,0 +1,103 @@
+{
+  "translation": {
+    "default_engine": "google",
+    "timeout": 3600,
+    "max_file_size": 104857600,
+    "max_concurrent_tasks": 10,
+    "supported_formats": [
+      ".pdf"
+    ],
+    "quality_threshold": 0.8,
+    "retry_count": 3,
+    "retry_delay": 5,
+    "engines": {
+      "google": {
+        "enabled": true,
+        "api_key": "",
+        "timeout": 30,
+        "max_chars_per_request": 5000
+      },
+      "deepl": {
+        "enabled": true,
+        "api_key": "",
+        "timeout": 30,
+        "max_chars_per_request": 5000
+      },
+      "openai": {
+        "enabled": true,
+        "api_key": "",
+        "timeout": 60,
+        "max_chars_per_request": 4000,
+        "model": "gpt-3.5-turbo"
+      }
+    }
+  },
+  "system": {
+    "cleanup_interval": 300,
+    "task_retention_hours": 24,
+    "log_level": "INFO",
+    "max_log_files": 10,
+    "log_rotation_size": 10485760,
+    "performance_monitoring": {
+      "enabled": true,
+      "metrics_interval": 60,
+      "alert_thresholds": {
+        "cpu_percent": 80,
+        "memory_percent": 85,
+        "disk_percent": 90
+      }
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "handlers": {
+      "console": {
+        "enabled": true,
+        "level": "INFO"
+      },
+      "file": {
+        "enabled": true,
+        "level": "DEBUG",
+        "filename": "logs/api.log",
+        "max_size": 10485760,
+        "backup_count": 5
+      }
+    }
+  },
+  "api": {
+    "rate_limit": {
+      "default": {
+        "requests_per_minute": 60,
+        "requests_per_hour": 1000,
+        "burst_size": 10
+      },
+      "user": {
+        "requests_per_minute": 30,
+        "requests_per_hour": 500,
+        "burst_size": 5
+      },
+      "guest": {
+        "requests_per_minute": 10,
+        "requests_per_hour": 100,
+        "burst_size": 2
+      }
+    },
+    "cors": {
+      "enabled": true,
+      "allow_origins": [
+        "*"
+      ],
+      "allow_methods": [
+        "*"
+      ],
+      "allow_headers": [
+        "*"
+      ]
+    },
+    "timeout": {
+      "request": 300,
+      "keep_alive": 75
+    }
+  }
+}

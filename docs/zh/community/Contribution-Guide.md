@@ -116,7 +116,7 @@
 - **const.py**：一些常量。
 - **main.py**：提供命令行工具。
 - **high_level.py**：基于 BabelDOC 的高级接口。
-- **http_api.py**：提供 HTTP API（未启动）。
+- **api/app.py**：提供 HTTP API 服务。
 
 ## 联系我们
 

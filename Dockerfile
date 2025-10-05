@@ -28,4 +28,4 @@ ARG CACHEBUST=1
 
 RUN uv pip install --system --no-cache . && uv pip install --system --no-cache --compile-bytecode -U babeldoc "pymupdf<1.25.3" && babeldoc --version && babeldoc --warmup
 RUN pdf2zh --version
-CMD ["uvicorn", "pdf2zh_next.http_api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "pdf2zh_next.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

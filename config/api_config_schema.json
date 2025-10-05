@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "translation": {
+      "type": "object",
+      "properties": {
+        "default_engine": {
+          "type": "string",
+          "enum": [
+            "google",
+            "deepl",
+            "openai",
+            "baidu",
+            "tencent"
+          ]
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 7200
+        },
+        "max_file_size": {
+          "type": "integer",
+          "minimum": 1048576,
+          "maximum": 1073741824
+        },
+        "max_concurrent_tasks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "supported_formats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "quality_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "retry_delay": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        }
+      },
+      "required": [
+        "default_engine",
+        "timeout",
+        "max_file_size"
+      ]
+    },
+    "system": {
+      "type": "object",
+      "properties": {
+        "cleanup_interval": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600
+        },
+        "task_retention_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
+        },
+        "log_level": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "format": {
+          "type": "string"
+        },
+        "handlers": {
+          "type": "object"
+        }
+      }
+    },
+    "api": {
+      "type": "object",
+      "properties": {
+        "rate_limit": {
+          "type": "object"
+        },
+        "cors": {
+          "type": "object"
+        },
+        "timeout": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "required": [
+    "translation",
+    "system",
+    "api"
+  ]
+}

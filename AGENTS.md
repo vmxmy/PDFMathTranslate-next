@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Core package lives in `pdf2zh_next/` with CLI entrypoints in `main.py` and the FastAPI service in `http_api.py`.
+- Core package lives in `pdf2zh_next/` with CLI entrypoints in `main.py` and the FastAPI service in `api/app.py`.
 - Translation engines sit in `pdf2zh_next/translator/`, shared helpers in `pdf2zh_next/utils/`, and config schemas in `pdf2zh_next/config/`.
 - Static assets (templates, UI strings) live in `pdf2zh_next/assets/` and `pdf2zh_next/gui_translation.yaml`.
 - Documentation sources are in `docs/` (see `mkdocs.yml`), while Docker and packaging assets live under `Dockerfile` and `script/`.
@@ -9,7 +9,7 @@
 
 ## Build, Test, and Development Commands
 - Install runtime and dev dependencies with `uv sync --dev` from the project root.
-- Run the CLI locally using `uv run pdf2zh --help`; launch the HTTP API via `uv run uvicorn pdf2zh_next.http_api:app --reload`.
+- Run the CLI locally using `uv run pdf2zh --help`; launch the HTTP API via `uv run uvicorn pdf2zh_next.api.app:app --reload`.
 - Start the Gradio web UI with `uv run python pdf2zh_next/gui.py` to verify interactive flows.
 - Enforce style before committing: `uv run ruff check` and `uv run ruff format --check` (or `uv run pre-commit run --all-files`).
 - Execute the test suite using `uv run pytest`; narrow focus with `uv run pytest tests/config/test_main.py -k initialize_config` when iterating.

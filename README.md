@@ -113,40 +113,31 @@ For detailed explanations, please refer to our document about [Advanced Usage](h
 Run an HTTP service with:
 
 ```
-uvicorn pdf2zh_next.http_api:app --host 0.0.0.0 --port 8000
+uvicorn pdf2zh_next.api.app:app --host 0.0.0.0 --port 8000
 ```
 
-The service exposes `POST /v1/translate`, accepting a PDF plus translation settings in `multipart/form-data`:
+常用 REST 调用（请在 Header 中添加 `Authorization: Bearer <api_key>`）：
 
-Submitting a job returns a task identifier:
+- 创建任务：
 
-```
-curl -X POST \
-  -F "file=@/path/to/paper.pdf" \
-  -F 'settings={"translate_engine_settings": {"translate_engine_type": "OpenAI", "openai_api_key": "sk-..."}}' \
-  http://localhost:8000/v1/translate
-```
-
-Response example:
-
-```
-{
-  "task_id": "1f7bb7c5f90a4a1f9e0b6725bf6c1730",
-  "status": "queued",
-  "status_url": "/v1/tasks/1f7bb7c5f90a4a1f9e0b6725bf6c1730",
-  "result_url": "/v1/tasks/1f7bb7c5f90a4a1f9e0b6725bf6c1730/result"
-}
-```
-
-- `GET /v1/tasks/{task_id}` 查看状态。
-- `GET /v1/tasks/{task_id}/result` 下载 ZIP（可选 `?cleanup=true` 删除临时文件）。
-- 请求参数 `wait=true` 时，接口将在任务完成后直接返回 ZIP：
-
-  ```
+  ```bash
   curl -X POST \
-    -F "file=@/path/to/paper.pdf" \
-    -F 'settings={...}' \
-    "http://localhost:8000/v1/translate?wait=true" --output translation.zip
+    -H "Authorization: Bearer test-key-1" \
+    -F "files=@/path/to/paper.pdf" \
+    -F "target_language=zh" \
+    http://localhost:8000/v1/translations/
+  ```
+
+- 查询进度：`GET /v1/translations/{task_id}/progress`
+- 查看结果摘要：`GET /v1/translations/{task_id}/result`
+- 下载翻译包：`GET /v1/translations/{task_id}/files/{file_id}/download`
+- 删除任务（附带清理产物）：`DELETE /v1/translations/{task_id}`
+- 已结束任务的独立清理：
+
+  ```bash
+  curl -X POST \
+    -H "Authorization: Bearer admin-key-1" \
+    http://localhost:8000/v1/translations/{task_id}/clean
   ```
 
 Environment variables:

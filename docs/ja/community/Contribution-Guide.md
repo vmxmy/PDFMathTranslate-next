@@ -116,7 +116,7 @@
 - **const.py**：いくつかの定数。
 - **main.py**：コマンドラインツールを提供。
 - **high_level.py**：BabelDOC ベースの高レベルインターフェース。
-- **http_api.py**：HTTP API を提供（未開始）。
+- **api/app.py**：HTTP API サービスを提供。
 
 ## お問い合わせ
 
