@@ -30,6 +30,13 @@ class TranslationRequest(BaseSchema):
     webhook_url: str | None = Field(None, description="完成通知的webhook URL")
     priority: int = Field(1, ge=1, le=5, description="任务优先级（1-5，5最高）")
     timeout: int | None = Field(None, ge=60, description="超时时间（秒）")
+    settings_json: str | None = Field(
+        None,
+        description=(
+            "可选的 JSON 字符串，用于覆盖 BabelDOC 的高级设置，"
+            "格式与 CLI 配置一致 (例如 translate_engine_settings 等)。"
+        ),
+    )
 
     @field_validator("files")
     def validate_files(cls, v):
