@@ -594,6 +594,20 @@ class TranslationService:
                 "no_remove_non_formula_lines"
             ] = True
 
+        extra_overrides: Dict[str, Any] | None = None
+        if request.settings_json:
+            try:
+                extra_overrides = json.loads(request.settings_json)
+            except json.JSONDecodeError as exc:
+                raise BadRequestException(
+                    message="settings_json 不是合法的 JSON",
+                    details={"error": str(exc)},
+                )
+            if extra_overrides is not None and not isinstance(extra_overrides, dict):
+                raise BadRequestException(
+                    message="settings_json 必须是 JSON 对象",
+                )
+
         engine_key = request.translation_engine.value.lower()
         engine_type = ENGINE_TYPE_MAP.get(engine_key, "Google")
         engine_config = translation_cfg.get("engines", {}).get(engine_key, {})
@@ -614,7 +628,11 @@ class TranslationService:
                 if value:
                     engine_payload[field] = value
 
-        cli_model = build_settings_model(translation_overrides, engine_payload)
+        cli_model = build_settings_model(
+            translation_overrides,
+            engine_payload,
+            extra_overrides,
+        )
         settings = cli_model.to_settings_model()
         settings.translation.output = str(output_dir)
         settings.basic.input_files = set()

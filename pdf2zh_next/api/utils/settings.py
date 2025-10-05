@@ -36,6 +36,7 @@ def _deep_merge(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, An
 
 
 def _normalize_translate_engine_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    payload = copy.deepcopy(payload)
     engine_payload = payload.get("translate_engine_settings") or {}
     if not engine_payload:
         return payload
@@ -63,24 +64,31 @@ def _normalize_translate_engine_payload(payload: Dict[str, Any]) -> Dict[str, An
     if metadata.cli_detail_field_name:
         normalized[metadata.cli_detail_field_name] = detail_fields
 
-    for key, value in normalized.items():
-        payload[key] = value
-
     payload.pop("translate_engine_settings", None)
+    payload.update(normalized)
     return payload
 
 
 def build_settings_model(
-    request_overrides: Dict[str, Any],
+    request_overrides: Dict[str, Any] | None = None,
     engine_payload: Dict[str, Any] | None = None,
+    extra_overrides: Dict[str, Any] | None = None,
 ) -> CLIEnvSettingsModel:
-    overrides: Dict[str, Any] = {}
+    merged = copy.deepcopy(DEFAULT_CLI_SETTINGS_DICT)
     if engine_payload:
-        overrides = _normalize_translate_engine_payload(
-            {"translate_engine_settings": engine_payload}
+        merged = _deep_merge(
+            merged,
+            _normalize_translate_engine_payload(
+                {"translate_engine_settings": engine_payload}
+            ),
         )
-    merged = _deep_merge(DEFAULT_CLI_SETTINGS_DICT, overrides)
-    merged = _deep_merge(merged, request_overrides)
+    if extra_overrides:
+        merged = _deep_merge(
+            merged,
+            _normalize_translate_engine_payload(extra_overrides),
+        )
+    if request_overrides:
+        merged = _deep_merge(merged, request_overrides)
     return CLIEnvSettingsModel.model_validate(merged)
 
 
