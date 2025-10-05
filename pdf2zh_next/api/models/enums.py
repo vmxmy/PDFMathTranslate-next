@@ -10,6 +10,7 @@ class TaskStatus(str, Enum):
     PARSING = "parsing"
     TRANSLATING = "translating"
     COMPOSING = "composing"
+    RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"

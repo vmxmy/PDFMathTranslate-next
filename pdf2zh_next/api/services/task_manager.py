@@ -210,8 +210,55 @@ class TaskManager:
         task.updated_at = now
         task.completed_at = now
 
-        # 这里可以添加错误处理逻辑
-        logger.error(f"任务失败: {task_id}, 错误: {error.message}")
+        failure_details = {
+            "code": error.code,
+            "message": error.message,
+            "retryable": error.retryable,
+            "details": error.details,
+        }
+
+        if task.progress:
+            task.progress.current_stage = TranslationStage.FAILED
+            task.progress.overall_progress = task.progress.overall_progress or 0.0
+
+            existing_failed_stage = next(
+                (
+                    stage_progress
+                    for stage_progress in task.progress.stage_details
+                    if stage_progress.stage == TranslationStage.FAILED
+                ),
+                None,
+            )
+
+            if existing_failed_stage:
+                existing_failed_stage.status = "任务失败"
+                existing_failed_stage.progress = task.progress.overall_progress
+                existing_failed_stage.started_at = (
+                    existing_failed_stage.started_at or now
+                )
+                existing_failed_stage.completed_at = now
+                existing_failed_stage.details = failure_details
+            else:
+                task.progress.stage_details.append(
+                    StageProgress(
+                        stage=TranslationStage.FAILED,
+                        progress=task.progress.overall_progress,
+                        status="任务失败",
+                        started_at=now,
+                        completed_at=now,
+                        details=failure_details,
+                    )
+                )
+
+        # 记录失败详情，便于排查
+        logger.error(
+            "任务失败: %s | code=%s | message=%s | retryable=%s | details=%s",
+            task_id,
+            error.code,
+            error.message,
+            error.retryable,
+            error.details,
+        )
 
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
         """取消任务"""
@@ -410,8 +457,26 @@ class TaskManager:
 
                 try:
                     await self._process_task(task_id, worker_id)
-                except Exception as e:
-                    logger.error(f"工作进程 {worker_id} 处理任务 {task_id} 出错: {e}")
+                except Exception as exc:
+                    task_snapshot = self.tasks.get(task_id)
+                    task_status = (
+                        task_snapshot.status if task_snapshot else "unknown"
+                    )
+                    current_stage = (
+                        task_snapshot.progress.current_stage
+                        if task_snapshot and task_snapshot.progress
+                        else "unknown"
+                    )
+                    logger.exception(
+                        "工作进程 %s 处理任务 %s 出错: %s | status=%s | stage=%s | priority=%s | error_type=%s",
+                        worker_id,
+                        task_id,
+                        exc,
+                        task_status,
+                        current_stage,
+                        priority,
+                        type(exc).__name__,
+                    )
 
         except asyncio.CancelledError:
             logger.info(f"工作进程关闭: {worker_id}")

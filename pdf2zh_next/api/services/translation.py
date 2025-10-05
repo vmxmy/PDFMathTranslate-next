@@ -1,6 +1,7 @@
 """翻译服务"""
 import asyncio
 import json
+import zipfile
 import shutil
 import tempfile
 from datetime import datetime, timedelta
@@ -438,6 +439,8 @@ class TranslationService:
     ) -> TranslationResult:
         files: List[TranslationFile] = []
         registry = self.file_registry.setdefault(task_id, {})
+        artifact_sources: list[Path] = []
+        config = self.task_configs.get(task_id, {})
         now = datetime.now()
 
         attachment_map = [
@@ -457,6 +460,7 @@ class TranslationService:
                 continue
             file_id = f"{uuid4().hex}"
             registry[file_id] = file_path
+            artifact_sources.append(file_path)
             files.append(
                 TranslationFile(
                     file_id=file_id,
@@ -473,6 +477,13 @@ class TranslationService:
         engine_name = settings.translate_engine_settings.translate_engine_type
         engine_mapping = {v: k for k, v in ENGINE_TYPE_MAP.items()}
         engine_key = engine_mapping.get(engine_name)
+        if not engine_key and isinstance(config.get("translation_engine"), TranslationEngine):
+            engine_key = config["translation_engine"].value
+        elif not engine_key and isinstance(config.get("translation_engine"), str):
+            try:
+                engine_key = TranslationEngine(config["translation_engine"].lower()).value
+            except ValueError:
+                engine_key = None
         if not engine_key:
             try:
                 engine_key = TranslationEngine(engine_name.lower()).value
@@ -480,11 +491,70 @@ class TranslationService:
                 engine_key = TranslationEngine.GOOGLE.value
         engine_used = TranslationEngine(engine_key)
 
+        if artifact_sources:
+            unique_sources: dict[str, Path] = {}
+            for path in artifact_sources:
+                try:
+                    key = str(path.resolve())
+                except OSError:
+                    key = str(path)
+                if key not in unique_sources:
+                    unique_sources[key] = path
+
+            zip_filename = "artifacts.zip"
+            zip_path = (Path(settings.translation.output) if settings.translation.output else Path.cwd()) / zip_filename
+            zip_path.parent.mkdir(parents=True, exist_ok=True)
+            if zip_path.exists():
+                zip_path.unlink()
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for source in unique_sources.values():
+                    if source.exists():
+                        archive.write(source, arcname=source.name)
+
+            zip_file_id = f"{uuid4().hex}"
+            registry[zip_file_id] = zip_path
+            files.insert(
+                0,
+                TranslationFile(
+                    file_id=zip_file_id,
+                    original_name=zip_path.name,
+                    translated_name=zip_path.name,
+                    size=zip_path.stat().st_size,
+                    page_count=0,
+                    download_url=
+                    f"/v1/translations/{task_id}/files/{zip_file_id}/download",
+                    expires_at=now + timedelta(days=7),
+                ),
+            )
+
+        def _extract_metric(obj: Any, names: tuple[str, ...], default: int = 0) -> int:
+            for name in names:
+                value = getattr(obj, name, None)
+                if isinstance(value, (int, float)) and value > 0:
+                    return int(value)
+            return default
+
+        total_pages = _extract_metric(
+            translate_result,
+            ("total_pages", "page_count", "pages", "num_pages"),
+            default=0,
+        )
+        total_chars = _extract_metric(
+            translate_result,
+            ("total_characters", "character_count", "total_chars"),
+            default=0,
+        )
+
+        if total_pages > 0:
+            for translation_file in files:
+                if translation_file.page_count == 0:
+                    translation_file.page_count = total_pages
+
         return TranslationResult(
             files=files,
             processing_time=getattr(translate_result, "total_seconds", 0.0) or 0.0,
-            total_pages=getattr(translate_result, "total_pages", 0) or 0,
-            total_chars=getattr(translate_result, "total_characters", 0) or 0,
+            total_pages=total_pages,
+            total_chars=total_chars,
             engine_used=engine_used,
             quality_score=getattr(translate_result, "quality", None),
             warnings=[],
