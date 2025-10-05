@@ -7,9 +7,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import logging
-import zipfile
+from uuid import uuid4
 
 from fastapi import UploadFile
+
+from pdf2zh_next.config.model import SettingsModel
+from pdf2zh_next.high_level import do_translate_async_stream
 
 from ..models import (
     TranslationRequest,
@@ -23,7 +26,7 @@ from ..models import (
     TranslationPreviewRequest,
 )
 from ..models import CleanupResult
-from ..models.enums import UserRole
+from ..models.enums import UserRole, TranslationStage, TaskStatus
 from ..exceptions import (
     FileFormatException,
     TranslationEngineException,
@@ -31,6 +34,8 @@ from ..exceptions import (
     BadRequestException,
     NotFoundException,
 )
+from ..utils import build_settings_model, ENGINE_TYPE_MAP
+from .config import config_service
 from .task_manager import task_manager
 
 logger = logging.getLogger(__name__)
@@ -52,6 +57,8 @@ class TranslationService:
         self.task_dirs: Dict[str, Path] = {}
         self.task_configs: Dict[str, Dict[str, Any]] = {}
         self.file_registry: Dict[str, Dict[str, Path]] = {}
+        self.task_settings: Dict[str, SettingsModel] = {}
+        self.task_inputs: Dict[str, Path] = {}
         self.storage_root.mkdir(parents=True, exist_ok=True)
         task_manager.register_translation_service(self)
 
@@ -138,10 +145,12 @@ class TranslationService:
 
     async def delete_task(self, task_id: str, user_info: Dict[str, Any]) -> bool:
         """删除任务并清理产物"""
-        deleted = await task_manager.delete_task(task_id, user_info["user_id"])
-        if deleted:
-            await self.clean_task_artifacts(task_id, user_info)
-        return deleted
+        task = await task_manager.get_task(task_id, user_info["user_id"])
+        if task.status not in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
+            raise BadRequestException(message="任务尚未结束，无法删除")
+
+        await self.clean_task_artifacts(task_id, user_info)
+        return await task_manager.delete_task(task_id, user_info["user_id"])
 
     async def list_tasks(
         self,
@@ -286,6 +295,8 @@ class TranslationService:
 
         self.task_dirs[task_id] = task_dir
         self.file_registry.setdefault(task_id, {})
+        if saved_files:
+            self.task_inputs[task_id] = saved_files[0]
 
         logger.info(
             "保存任务文件: %s, 文件数: %s, 路径: %s",
@@ -318,6 +329,7 @@ class TranslationService:
         config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2))
         self.task_configs[task_id] = config
         logger.info(f"保存任务配置: {task_id}")
+        self._initialize_task_settings(task_id, request)
 
     async def _translate_text(
         self,
@@ -346,75 +358,126 @@ class TranslationService:
         # TODO: 实现webhook通知逻辑
         logger.info(f"通知webhook: {webhook_url}, 任务: {task_id}, 状态: {status}")
 
-    async def finalize_task(self, task_id: str):
-        """在任务完成时生成输出文件并填充结果信息"""
-        task = task_manager.tasks.get(task_id)
-        if not task:
-            logger.error("尝试为不存在的任务生成结果: %s", task_id)
-            return
-
-        task_dir = self.task_dirs.get(task_id, self.storage_root / task_id)
-        input_dir = task_dir / "input"
-        output_dir = task_dir / "output"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        bundle_path = output_dir / f"{task_id}_translated.zip"
-        with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as bundle:
-            if input_dir.exists():
-                for source_path in input_dir.iterdir():
-                    if source_path.is_file():
-                        arcname = f"translated/{source_path.name}"
-                        bundle.write(source_path, arcname)
-            bundle.writestr(
-                "translated/README.txt",
-                (
-                    "This is a placeholder translation package.\n"
-                    "In production, translated documents will be placed in this archive.\n"
-                ),
+    async def execute_task(self, task: TranslationTask) -> TranslationResult:
+        """执行真实翻译流程并返回结果"""
+        task_id = task.task_id
+        settings = self.task_settings.get(task_id)
+        input_path = self.task_inputs.get(task_id)
+        if not settings or not input_path:
+            raise InternalServerException(
+                message="任务配置缺失",
+                details={"task_id": task_id},
             )
 
-        file_id = f"{task_id}-bundle"
-        self.file_registry.setdefault(task_id, {})[file_id] = bundle_path
+        output_dir = self.task_dirs.get(task_id, self.storage_root / task_id) / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-        config = self.task_configs.get(task_id, {})
-        engine_value = config.get("translation_engine")
-        if isinstance(engine_value, TranslationEngine):
-            engine = engine_value
-        elif isinstance(engine_value, str):
-            try:
-                engine = TranslationEngine(engine_value)
-            except ValueError:
-                engine = TranslationEngine.GOOGLE
-        else:
-            engine = TranslationEngine.GOOGLE
+        settings = settings.clone()
+        settings.translation.output = str(output_dir)
+        settings.basic.input_files = set()
 
-        processing_time = None
-        if task.started_at:
-            processing_time = (datetime.now() - task.started_at).total_seconds()
-        else:
-            processing_time = 0.0
+        translate_result = None
+        try:
+            await task_manager.update_task_progress(
+                task_id, TranslationStage.PARSING, 15.0, "解析PDF"
+            )
+            await task_manager.update_task_progress(
+                task_id, TranslationStage.TRANSLATING, 60.0, "翻译进行中"
+            )
+            async for event in do_translate_async_stream(settings, input_path):
+                event_type = event.get("type")
+                if event_type == "error":
+                    error_message = event.get("error", "Unknown error")
+                    raise TranslationEngineException(
+                        message="翻译过程出现错误",
+                        details={"error": error_message},
+                    )
+                if event_type == "finish":
+                    translate_result = event.get("translate_result")
+                    break
+        except TranslationEngineException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("任务执行失败: %s", exc)
+            raise TranslationEngineException(
+                message="翻译流程异常",
+                details={"error": str(exc)},
+            ) from exc
 
-        translation_file = TranslationFile(
-            file_id=file_id,
-            original_name=f"{task_id}_translated.zip",
-            translated_name=f"{task_id}_translated.zip",
-            size=bundle_path.stat().st_size,
-            page_count=0,
-            download_url=f"/v1/translations/{task_id}/files/{file_id}/download",
-            expires_at=datetime.now() + timedelta(days=7),
+        if translate_result is None:
+            raise InternalServerException(
+                message="翻译流程未返回结果",
+                details={"task_id": task_id},
+            )
+
+        await task_manager.update_task_progress(
+            task_id, TranslationStage.COMPOSING, 85.0, "生成译文"
         )
 
-        result = TranslationResult(
-            files=[translation_file],
-            processing_time=processing_time,
-            total_pages=0,
-            total_chars=0,
-            engine_used=engine,
-            quality_score=0.95,
+        result = self._build_translation_result(task_id, translate_result, settings)
+        await task_manager.complete_task(task_id, result)
+        self.task_settings.pop(task_id, None)
+        return result
+
+    def _build_translation_result(
+        self,
+        task_id: str,
+        translate_result: Any,
+        settings: SettingsModel,
+    ) -> TranslationResult:
+        files: List[TranslationFile] = []
+        registry = self.file_registry.setdefault(task_id, {})
+        now = datetime.now()
+
+        attachment_map = [
+            ("mono_pdf_path", "mono.pdf"),
+            ("dual_pdf_path", "dual.pdf"),
+            ("no_watermark_mono_pdf_path", "mono.nowatermark.pdf"),
+            ("no_watermark_dual_pdf_path", "dual.nowatermark.pdf"),
+            ("auto_extracted_glossary_path", "glossary.csv"),
+        ]
+
+        for attr, default_name in attachment_map:
+            path_str = getattr(translate_result, attr, None)
+            if not path_str:
+                continue
+            file_path = Path(path_str)
+            if not file_path.exists():
+                continue
+            file_id = f"{uuid4().hex}"
+            registry[file_id] = file_path
+            files.append(
+                TranslationFile(
+                    file_id=file_id,
+                    original_name=file_path.name,
+                    translated_name=file_path.name,
+                    size=file_path.stat().st_size,
+                    page_count=getattr(translate_result, "total_pages", 0) or 0,
+                    download_url=
+                    f"/v1/translations/{task_id}/files/{file_id}/download",
+                    expires_at=now + timedelta(days=7),
+                )
+            )
+
+        engine_name = settings.translate_engine_settings.translate_engine_type
+        engine_mapping = {v: k for k, v in ENGINE_TYPE_MAP.items()}
+        engine_key = engine_mapping.get(engine_name)
+        if not engine_key:
+            try:
+                engine_key = TranslationEngine(engine_name.lower()).value
+            except ValueError:
+                engine_key = TranslationEngine.GOOGLE.value
+        engine_used = TranslationEngine(engine_key)
+
+        return TranslationResult(
+            files=files,
+            processing_time=getattr(translate_result, "total_seconds", 0.0) or 0.0,
+            total_pages=getattr(translate_result, "total_pages", 0) or 0,
+            total_chars=getattr(translate_result, "total_characters", 0) or 0,
+            engine_used=engine_used,
+            quality_score=getattr(translate_result, "quality", None),
             warnings=[],
         )
-
-        await task_manager.complete_task(task_id, result)
 
     async def get_translated_file_path(
         self, task_id: str, file_id: str, user_info: Dict[str, Any]
@@ -447,6 +510,8 @@ class TranslationService:
                 self.task_dirs.pop(task_id, None)
                 self.task_configs.pop(task_id, None)
                 self.file_registry.pop(task_id, None)
+                self.task_settings.pop(task_id, None)
+                self.task_inputs.pop(task_id, None)
 
                 return CleanupResult(
                     task_exists=False,
@@ -478,6 +543,8 @@ class TranslationService:
         self.task_dirs.pop(task_id, None)
         self.task_configs.pop(task_id, None)
         self.file_registry.pop(task_id, None)
+        self.task_settings.pop(task_id, None)
+        self.task_inputs.pop(task_id, None)
         download_links_valid = True
         if task_exists and task.result:
             task.result = task.result.model_copy(update={"files": []})
@@ -489,6 +556,58 @@ class TranslationService:
             message="任务与文件已清理" if files_removed else "任务存在，未发现可清理文件",
             download_links_valid=download_links_valid,
         )
+
+    def _initialize_task_settings(
+        self, task_id: str, request: TranslationRequest
+    ) -> None:
+        output_dir = self.task_dirs.get(task_id, self.storage_root / task_id) / "output"
+        cfg = config_service.get_config().current_config
+        translation_cfg = cfg.get("translation", {})
+
+        translation_overrides: Dict[str, Any] = {
+            "translation": {
+                "lang_out": request.target_language,
+            },
+            "pdf": {
+                "translate_table_text": request.translate_tables,
+            },
+        }
+        if request.source_language:
+            translation_overrides["translation"]["lang_in"] = request.source_language
+        if not request.preserve_formatting:
+            translation_overrides.setdefault("pdf", {})[
+                "disable_rich_text_translate"
+            ] = True
+        if not request.translate_equations:
+            translation_overrides.setdefault("pdf", {})[
+                "no_remove_non_formula_lines"
+            ] = True
+
+        engine_key = request.translation_engine.value.lower()
+        engine_type = ENGINE_TYPE_MAP.get(engine_key, "Google")
+        engine_config = translation_cfg.get("engines", {}).get(engine_key, {})
+        engine_payload: Dict[str, Any] = {
+            "translate_engine_type": engine_type,
+        }
+        for field, cfg_key in (
+            ("openai_api_key", "api_key"),
+            ("openai_model", "model"),
+            ("deepl_auth_key", "api_key"),
+        ):
+            if engine_type == "OpenAI" and field.startswith("openai"):
+                value = engine_config.get(cfg_key)
+                if value:
+                    engine_payload[field] = value
+            if engine_type == "DeepL" and field.startswith("deepl"):
+                value = engine_config.get(cfg_key)
+                if value:
+                    engine_payload[field] = value
+
+        cli_model = build_settings_model(translation_overrides, engine_payload)
+        settings = cli_model.to_settings_model()
+        settings.translation.output = str(output_dir)
+        settings.basic.input_files = set()
+        self.task_settings[task_id] = settings
 
 
 # 全局翻译服务实例

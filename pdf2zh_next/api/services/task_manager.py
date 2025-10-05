@@ -409,17 +409,9 @@ class TaskManager:
                     continue
 
                 try:
-                    # 开始处理任务
                     await self._process_task(task_id, worker_id)
                 except Exception as e:
-                    logger.error(f"工作进程 {worker_id} 处理任务 {task_id} 失败: {e}")
-                    error = ErrorDetail(
-                        code="INTERNAL_ERROR",
-                        message=f"任务处理失败: {str(e)}",
-                        timestamp=datetime.now(),
-                        retryable=True,
-                    )
-                    await self.fail_task(task_id, error)
+                    logger.error(f"工作进程 {worker_id} 处理任务 {task_id} 出错: {e}")
 
         except asyncio.CancelledError:
             logger.info(f"工作进程关闭: {worker_id}")
@@ -433,49 +425,23 @@ class TaskManager:
         logger.info(f"工作进程 {worker_id} 开始处理任务: {task_id}")
 
         task = self.tasks[task_id]
-        task.status = TaskStatus.PARSING
+        task.status = TaskStatus.RUNNING
         task.started_at = datetime.now()
 
-        # 模拟处理过程
-        stages = [
-            (TranslationStage.PARSING, "解析PDF文档", 10),
-            (TranslationStage.TRANSLATING, "翻译文档内容", 80),
-            (TranslationStage.COMPOSING, "生成翻译文档", 10),
-        ]
-
-        total_progress = 0
-        for stage, description, weight in stages:
-            await self.update_task_progress(
-                task_id, stage, total_progress, f"开始{description}"
+        try:
+            if not self.translation_service:
+                raise RuntimeError("Translation service not available")
+            await self.translation_service.execute_task(task)
+            logger.info(f"工作进程 {worker_id} 完成任务: {task_id}")
+        except Exception as exc:
+            logger.error(f"任务 {task_id} 执行失败: {exc}")
+            error = ErrorDetail(
+                code="INTERNAL_ERROR",
+                message=str(exc),
+                timestamp=datetime.now(),
+                retryable=False,
             )
-
-            # 模拟处理时间
-            await asyncio.sleep(2)
-
-            total_progress += weight
-            await self.update_task_progress(
-                task_id, stage, total_progress, f"{description}进行中"
-            )
-
-            # 模拟更多处理时间
-            await asyncio.sleep(3)
-
-        if self.translation_service:
-            await self.translation_service.finalize_task(task_id)
-        else:
-            logger.warning("未注册翻译服务，使用占位结果: %s", task_id)
-            await self.complete_task(
-                task_id,
-                TranslationResult(
-                    files=[],
-                    processing_time=30.0,
-                    total_pages=0,
-                    total_chars=0,
-                    engine_used=TranslationEngine.GOOGLE,
-                    quality_score=0.0,
-                ),
-            )
-        logger.info(f"工作进程 {worker_id} 完成任务: {task_id}")
+            await self.fail_task(task_id, error)
 
     async def _cleanup_loop(self):
         """清理循环"""
