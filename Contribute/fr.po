@@ -1700,8 +1700,8 @@ msgstr "## Structure du projet\n"
 
 # This content is from "Contribution-Guide.md", line 105
 msgctxt "chunk_9004E6A3"
-msgid "- **config folder**: Configuration system.\n- **translator folder**: Translator-related implementations.\n- **gui.py**: Provides the GUI interface.\n- **const.py**: Some constants.\n- **main.py**: Provides the command-line tool.\n- **high_level.py**: High-level interfaces based on BabelDOC.\n- **http_api.py**: Provides HTTP API (not started).\n"
-msgstr "- **config folder** : Système de configuration.\n- **translator folder** : Implémentations liées au traducteur.\n- **gui.py** : Fournit l'interface GUI.\n- **const.py** : Quelques constantes.\n- **main.py** : Fournit l'outil en ligne de commande.\n- **high_level.py** : Interfaces de haut niveau basées sur BabelDOC.\n- **http_api.py** : Fournit l'API HTTP (non démarrée).\n"
+msgid "- **config folder**: Configuration system.\n- **translator folder**: Translator-related implementations.\n- **gui.py**: Provides the GUI interface.\n- **const.py**: Some constants.\n- **main.py**: Provides the command-line tool.\n- **high_level.py**: High-level interfaces based on BabelDOC.\n- **api/app.py**: Provides HTTP API (not started).\n"
+msgstr "- **config folder** : Système de configuration.\n- **translator folder** : Implémentations liées au traducteur.\n- **gui.py** : Fournit l'interface GUI.\n- **const.py** : Quelques constantes.\n- **main.py** : Fournit l'outil en ligne de commande.\n- **high_level.py** : Interfaces de haut niveau basées sur BabelDOC.\n- **api/app.py** : Fournit l'API HTTP (non démarrée).\n"
 
 # This content is from "Contribution-Guide.md", line 113
 msgctxt "chunk_0C087ADF"

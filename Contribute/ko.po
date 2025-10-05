@@ -1680,8 +1680,8 @@ msgstr "## 프로젝트 구조\n"
 
 # This content is from "Contribution-Guide.md", line 105
 msgctxt "chunk_9004E6A3"
-msgid "- **config folder**: Configuration system.\n- **translator folder**: Translator-related implementations.\n- **gui.py**: Provides the GUI interface.\n- **const.py**: Some constants.\n- **main.py**: Provides the command-line tool.\n- **high_level.py**: High-level interfaces based on BabelDOC.\n- **http_api.py**: Provides HTTP API (not started).\n"
-msgstr "- **config 폴더**: 구성 시스템.\n- **translator 폴더**: 번역기 관련 구현.\n- **gui.py**: GUI 인터페이스를 제공.\n- **const.py**: 일부 상수.\n- **main.py**: 명령줄 도구를 제공.\n- **high_level.py**: BabelDOC 기반의 고수준 인터페이스.\n- **http_api.py**: HTTP API 를 제공 (시작되지 않음).\n"
+msgid "- **config folder**: Configuration system.\n- **translator folder**: Translator-related implementations.\n- **gui.py**: Provides the GUI interface.\n- **const.py**: Some constants.\n- **main.py**: Provides the command-line tool.\n- **high_level.py**: High-level interfaces based on BabelDOC.\n- **api/app.py**: Provides HTTP API (not started).\n"
+msgstr "- **config 폴더**: 구성 시스템.\n- **translator 폴더**: 번역기 관련 구현.\n- **gui.py**: GUI 인터페이스를 제공.\n- **const.py**: 일부 상수.\n- **main.py**: 명령줄 도구를 제공.\n- **high_level.py**: BabelDOC 기반의 고수준 인터페이스.\n- **api/app.py**: HTTP API 를 제공 (시작되지 않음).\n"
 
 # This content is from "Contribution-Guide.md", line 113
 msgctxt "chunk_0C087ADF"
