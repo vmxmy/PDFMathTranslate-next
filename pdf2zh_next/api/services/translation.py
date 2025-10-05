@@ -575,6 +575,28 @@ class TranslationService:
         cfg = config_service.get_config().current_config
         translation_cfg = cfg.get("translation", {})
 
+
+        engine_member = request.translation_engine
+        if isinstance(engine_member, TranslationEngine):
+            engine_key_value = engine_member.value
+        elif isinstance(engine_member, str):
+            try:
+                engine_key_value = TranslationEngine(engine_member.lower()).value
+            except ValueError:
+                raise BadRequestException(
+                    message=f"不支持的翻译引擎: {engine_member}",
+                    details={"supported_engines": list(self.engines.keys())},
+                )
+        else:
+            raise BadRequestException(
+                message="翻译引擎参数无效",
+                details={"type": str(type(engine_member))},
+            )
+
+        logger.debug(
+            "Initializing settings for %s with engine %s", task_id, engine_key_value
+        )
+
         translation_overrides: Dict[str, Any] = {
             "translation": {
                 "lang_out": request.target_language,
@@ -608,7 +630,7 @@ class TranslationService:
                     message="settings_json 必须是 JSON 对象",
                 )
 
-        engine_key = request.translation_engine.value.lower()
+        engine_key = engine_key_value.lower()
         engine_type = ENGINE_TYPE_MAP.get(engine_key, "Google")
         engine_config = translation_cfg.get("engines", {}).get(engine_key, {})
         engine_payload: Dict[str, Any] = {
