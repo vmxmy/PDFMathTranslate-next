@@ -83,11 +83,10 @@ class TranslationService:
                     try:
                         engine_enum = TranslationEngine(engine_str)
                     except ValueError:
-                        logger.warning(
-                            "Unknown translation_engine '%s', fallback to google",
-                            request.translation_engine,
+                        raise BadRequestException(
+                            message=f"不支持的翻译引擎: {request.translation_engine}",
+                            details={"supported_engines": list(self.engines.keys())},
                         )
-                        engine_enum = TranslationEngine.GOOGLE
             request.translation_engine = engine_enum
 
             # 验证文件
