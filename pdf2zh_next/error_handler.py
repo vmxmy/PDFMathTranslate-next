@@ -11,7 +11,7 @@ class ErrorMessages:
         "exit code -9": {
             "user_message": "翻译任务因内存不足被系统终止",
             "suggestions": [
-                "尝试翻译较小的PDF文件",
+                "尝试翻译较小的 PDF 文件",
                 "联系管理员增加服务器内存",
                 "检查服务器内存配置是否合理"
             ],
@@ -20,7 +20,7 @@ class ErrorMessages:
         "memory limit exceeded": {
             "user_message": "翻译任务超出内存限制",
             "suggestions": [
-                "尝试分页翻译较大的PDF文件",
+                "尝试分页翻译较大的 PDF 文件",
                 "调整 TRANSLATION_MEMORY_LIMIT_MB 环境变量",
                 "减少同时翻译的任务数量"
             ],
@@ -43,7 +43,7 @@ class ErrorMessages:
             "user_message": "网络连接失败",
             "suggestions": [
                 "检查网络连接是否正常",
-                "验证LLM服务地址是否正确",
+                "验证 LLM 服务地址是否正确",
                 "检查防火墙设置"
             ],
             "error_code": "CONNECTION_ERROR"
@@ -58,7 +58,7 @@ class ErrorMessages:
             "error_code": "NETWORK_TIMEOUT"
         },
         "ssl": {
-            "user_message": "SSL/TLS证书验证失败",
+            "user_message": "SSL/TLS 证书验证失败",
             "suggestions": [
                 "检查系统时间是否正确",
                 "更新证书库",
@@ -68,61 +68,61 @@ class ErrorMessages:
         }
     }
 
-    # API相关错误
+    # API 相关错误
     API_ERRORS = {
         "api_key": {
-            "user_message": "API密钥配置错误",
+            "user_message": "API 密钥配置错误",
             "suggestions": [
-                "检查API密钥是否正确",
-                "验证API密钥是否有效",
-                "确认API服务是否正常"
+                "检查 API 密钥是否正确",
+                "验证 API 密钥是否有效",
+                "确认 API 服务是否正常"
             ],
             "error_code": "API_KEY_ERROR"
         },
         "rate_limit": {
-            "user_message": "API请求频率超限",
+            "user_message": "API 请求频率超限",
             "suggestions": [
                 "降低请求频率",
-                "升级API服务套餐",
+                "升级 API 服务套餐",
                 "在请求间添加适当延迟"
             ],
             "error_code": "RATE_LIMIT_ERROR"
         },
         "quota": {
-            "user_message": "API配额已用完",
+            "user_message": "API 配额已用完",
             "suggestions": [
-                "检查API账户余额",
-                "升级API服务套餐",
+                "检查 API 账户余额",
+                "升级 API 服务套餐",
                 "等待配额重置"
             ],
             "error_code": "QUOTA_EXCEEDED"
         }
     }
 
-    # PDF相关错误
+    # PDF 相关错误
     PDF_ERRORS = {
         "corrupted": {
-            "user_message": "PDF文件损坏或格式不支持",
+            "user_message": "PDF 文件损坏或格式不支持",
             "suggestions": [
-                "尝试用其他PDF阅读器打开文件",
-                "重新生成PDF文件",
-                "尝试转换为其他格式再转换回PDF"
+                "尝试用其他 PDF 阅读器打开文件",
+                "重新生成 PDF 文件",
+                "尝试转换为其他格式再转换回 PDF"
             ],
             "error_code": "CORRUPTED_PDF"
         },
         "encrypted": {
-            "user_message": "PDF文件已加密",
+            "user_message": "PDF 文件已加密",
             "suggestions": [
                 "提供正确的密码",
-                "使用未加密的PDF文件",
-                "先解除PDF密码保护"
+                "使用未加密的 PDF 文件",
+                "先解除 PDF 密码保护"
             ],
             "error_code": "ENCRYPTED_PDF"
         },
         "too_large": {
-            "user_message": "PDF文件过大",
+            "user_message": "PDF 文件过大",
             "suggestions": [
-                "压缩PDF文件大小",
+                "压缩 PDF 文件大小",
                 "分页处理",
                 "使用更小的文件进行测试"
             ],
@@ -167,12 +167,12 @@ class ErrorMessages:
             if pattern in error_lower:
                 return error_info
 
-        # 检查API错误
+        # 检查 API 错误
         for pattern, error_info in cls.API_ERRORS.items():
             if pattern in error_lower:
                 return error_info
 
-        # 检查PDF错误
+        # 检查 PDF 错误
         for pattern, error_info in cls.PDF_ERRORS.items():
             if pattern in error_lower:
                 return error_info
@@ -187,7 +187,7 @@ class ErrorMessages:
             "user_message": "翻译过程中发生未知错误",
             "suggestions": [
                 "检查错误日志获取更多详细信息",
-                "尝试使用较小的PDF文件",
+                "尝试使用较小的 PDF 文件",
                 "联系技术支持"
             ],
             "error_code": "UNKNOWN_ERROR"
@@ -195,7 +195,7 @@ class ErrorMessages:
 
     @classmethod
     def format_api_error_response(cls, original_error: str) -> dict[str, Any]:
-        """格式化API错误响应"""
+        """格式化 API 错误响应"""
         friendly_error = cls.get_friendly_error(original_error)
 
         return {

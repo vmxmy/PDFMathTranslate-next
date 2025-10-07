@@ -37,23 +37,23 @@ class ConfigService:
                 self._save_config()
                 logger.info("使用默认配置")
         except Exception as e:
-            logger.error(f"加载配置文件失败: {e}")
+            logger.error(f"加载配置文件失败：{e}")
             self.config_data = self._get_default_config()
 
     def _load_schema(self):
-        """加载配置schema"""
+        """加载配置 schema"""
         try:
             if self.config_schema_file.exists():
                 with self.config_schema_file.open(encoding="utf-8") as file:
                     self.config_schema = json.load(file)
-                logger.info("配置schema加载成功")
+                logger.info("配置 schema 加载成功")
             else:
-                # 使用默认schema
+                # 使用默认 schema
                 self.config_schema = self._get_default_schema()
                 self._save_schema()
-                logger.info("使用默认配置schema")
+                logger.info("使用默认配置 schema")
         except Exception as e:
-            logger.error(f"加载配置schema失败: {e}")
+            logger.error(f"加载配置 schema 失败：{e}")
             self.config_schema = self._get_default_schema()
 
     def _save_config(self):
@@ -64,23 +64,23 @@ class ConfigService:
                 json.dump(self.config_data, file, indent=2, ensure_ascii=False)
             logger.info("配置文件保存成功")
         except Exception as exc:
-            logger.error(f"保存配置文件失败: {exc}")
+            logger.error(f"保存配置文件失败：{exc}")
             raise InternalServerException(
                 message="保存配置失败",
                 details={"error": str(exc)}
             ) from exc
 
     def _save_schema(self):
-        """保存配置schema"""
+        """保存配置 schema"""
         try:
             self.config_schema_file.parent.mkdir(parents=True, exist_ok=True)
             with self.config_schema_file.open("w", encoding="utf-8") as file:
                 json.dump(self.config_schema, file, indent=2, ensure_ascii=False)
-            logger.info("配置schema保存成功")
+            logger.info("配置 schema 保存成功")
         except Exception as exc:
-            logger.error(f"保存配置schema失败: {exc}")
+            logger.error(f"保存配置 schema 失败：{exc}")
             raise InternalServerException(
-                message="保存配置schema失败",
+                message="保存配置 schema 失败",
                 details={"error": str(exc)}
             ) from exc
 
@@ -119,7 +119,7 @@ class ConfigService:
                 }
             },
             "system": {
-                "cleanup_interval": 300,  # 5分钟
+                "cleanup_interval": 300,  # 5 分钟
                 "task_retention_hours": 24,
                 "log_level": "INFO",
                 "max_log_files": 10,
@@ -176,14 +176,14 @@ class ConfigService:
                     "allow_headers": ["*"]
                 },
                 "timeout": {
-                    "request": 300,  # 5分钟
+                    "request": 300,  # 5 分钟
                     "keep_alive": 75
                 }
             }
         }
 
     def _get_default_schema(self) -> dict[str, Any]:
-        """获取默认配置schema"""
+        """获取默认配置 schema"""
         return {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -240,7 +240,7 @@ class ConfigService:
         )
 
     def get_config_schema(self) -> dict[str, Any]:
-        """获取配置schema"""
+        """获取配置 schema"""
         return self.config_schema
 
     def update_config(self, request: ConfigUpdateRequest) -> ConfigResponse:
@@ -283,7 +283,7 @@ class ConfigService:
             )
 
         except Exception as exc:
-            logger.error(f"配置更新失败: {exc}")
+            logger.error(f"配置更新失败：{exc}")
             raise InternalServerException(
                 message="配置更新失败",
                 details={"error": str(exc)}
@@ -300,7 +300,7 @@ class ConfigService:
             return self.get_config()
 
         except Exception as exc:
-            logger.error(f"配置重置失败: {exc}")
+            logger.error(f"配置重置失败：{exc}")
             raise InternalServerException(
                 message="配置重置失败",
                 details={"error": str(exc)}
@@ -311,24 +311,24 @@ class ConfigService:
         errors = []
 
         try:
-            # 获取对应段的schema
+            # 获取对应段的 schema
             section_schema = self.config_schema.get("properties", {}).get(section)
             if not section_schema:
                 if validation_mode == ValidationMode.STRICT:
-                    errors.append(f"未知的配置段: {section}")
+                    errors.append(f"未知的配置段：{section}")
                 return errors
 
             # 基本验证
             for key, value in new_config.items():
                 if key not in section_schema.get("properties", {}):
                     if validation_mode == ValidationMode.STRICT:
-                        errors.append(f"未知的配置项: {section}.{key}")
+                        errors.append(f"未知的配置项：{section}.{key}")
                     continue
 
                 # 类型验证
                 expected_type = section_schema["properties"][key].get("type")
                 if expected_type and not self._validate_type(value, expected_type):
-                    errors.append(f"配置项类型错误: {section}.{key}, 期望类型: {expected_type}")
+                    errors.append(f"配置项类型错误：{section}.{key}, 期望类型：{expected_type}")
 
             # 如果有错误且是严格模式，返回错误
             if errors and validation_mode == ValidationMode.STRICT:
@@ -341,7 +341,7 @@ class ConfigService:
             self.config_data[section].update(new_config)
 
         except Exception as e:
-            errors.append(f"配置段验证失败: {section}, {str(e)}")
+            errors.append(f"配置段验证失败：{section}, {str(e)}")
 
         return errors
 
@@ -370,7 +370,7 @@ class ConfigService:
         return self.config_data.get("system", {})
 
     def get_api_config(self) -> dict[str, Any]:
-        """获取API配置"""
+        """获取 API 配置"""
         return self.config_data.get("api", {})
 
     def get_logging_config(self) -> dict[str, Any]:

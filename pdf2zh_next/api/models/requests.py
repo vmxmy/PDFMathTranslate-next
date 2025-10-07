@@ -15,7 +15,7 @@ from .schemas import BaseSchema
 class TranslationRequest(BaseSchema):
     """翻译请求模型"""
 
-    files: list[UploadFile] = Field(..., description="要翻译的PDF文件列表")
+    files: list[UploadFile] = Field(..., description="要翻译的 PDF 文件列表")
     target_language: str = Field("zh", description="目标语言代码")
     source_language: str | None = Field(
         None, description="源语言代码（可选，自动检测）"
@@ -27,8 +27,8 @@ class TranslationRequest(BaseSchema):
     translate_tables: bool = Field(True, description="是否翻译表格")
     translate_equations: bool = Field(True, description="是否处理数学公式")
     custom_glossary: dict[str, str] | None = Field(None, description="自定义术语词典")
-    webhook_url: str | None = Field(None, description="完成通知的webhook URL")
-    priority: int = Field(1, ge=1, le=5, description="任务优先级（1-5，5最高）")
+    webhook_url: str | None = Field(None, description="完成通知的 webhook URL")
+    priority: int = Field(1, ge=1, le=5, description="任务优先级（1-5，5 最高）")
     timeout: int | None = Field(None, ge=60, description="超时时间（秒）")
     settings_json: str | None = Field(
         None,
@@ -45,14 +45,14 @@ class TranslationRequest(BaseSchema):
             raise ValueError("至少需要上传一个文件")
         for file in v:
             if not file.filename.lower().endswith(".pdf"):
-                raise ValueError(f"文件 {file.filename} 必须是PDF格式")
+                raise ValueError(f"文件 {file.filename} 必须是 PDF 格式")
         return v
 
     @field_validator("webhook_url")
     @classmethod
     def validate_webhook_url(cls, v):
         if v and not (v.startswith("http://") or v.startswith("https://")):
-            raise ValueError("Webhook URL必须是有效的HTTP/HTTPS地址")
+            raise ValueError("Webhook URL 必须是有效的 HTTP/HTTPS 地址")
         return v
 
 
@@ -108,7 +108,7 @@ class TaskFilterRequest(BaseSchema):
     engine: list[TranslationEngine] | None = Field(None, description="翻译引擎过滤")
     date_from: datetime | None = Field(None, description="开始时间过滤")
     date_to: datetime | None = Field(None, description="结束时间过滤")
-    user_id: str | None = Field(None, description="用户ID过滤")
+    user_id: str | None = Field(None, description="用户 ID 过滤")
     priority_min: int | None = Field(None, ge=1, le=5, description="最小优先级")
     priority_max: int | None = Field(None, ge=1, le=5, description="最大优先级")
     sort_by: str | None = Field(None, description="排序字段")
@@ -118,16 +118,16 @@ class TaskFilterRequest(BaseSchema):
 class BatchOperationRequest(BaseSchema):
     """批量操作请求"""
 
-    task_ids: list[str] = Field(..., description="任务ID列表")
+    task_ids: list[str] = Field(..., description="任务 ID 列表")
     operation: str = Field(..., description="操作类型")
 
     @field_validator("task_ids")
     @classmethod
     def validate_task_ids(cls, v):
         if not v:
-            raise ValueError("任务ID列表不能为空")
+            raise ValueError("任务 ID 列表不能为空")
         if len(v) > 100:
-            raise ValueError("批量操作最多支持100个任务")
+            raise ValueError("批量操作最多支持 100 个任务")
         return v
 
     @field_validator("operation")
@@ -135,21 +135,21 @@ class BatchOperationRequest(BaseSchema):
     def validate_operation(cls, v):
         allowed_operations = ["cancel", "delete", "retry", "pause", "resume"]
         if v not in allowed_operations:
-            raise ValueError(f"不支持的操作类型: {v}")
+            raise ValueError(f"不支持的操作类型：{v}")
         return v
 
 
 class WebhookTestRequest(BaseSchema):
-    """Webhook测试请求"""
+    """Webhook 测试请求"""
 
-    webhook_url: str = Field(..., description="要测试的webhook URL")
+    webhook_url: str = Field(..., description="要测试的 webhook URL")
     test_payload: dict[str, Any] | None = Field(None, description="测试负载")
 
     @field_validator("webhook_url")
     @classmethod
     def validate_webhook_url(cls, v):
         if not (v.startswith("http://") or v.startswith("https://")):
-            raise ValueError("Webhook URL必须是有效的HTTP/HTTPS地址")
+            raise ValueError("Webhook URL 必须是有效的 HTTP/HTTPS 地址")
         return v
 
 
@@ -169,5 +169,5 @@ class TranslationPreviewRequest(BaseSchema):
         if not v.strip():
             raise ValueError("翻译文本不能为空")
         if len(v) > 10000:
-            raise ValueError("翻译文本长度不能超过10000字符")
+            raise ValueError("翻译文本长度不能超过 10000 字符")
         return v.strip()

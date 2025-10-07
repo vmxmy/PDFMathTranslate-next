@@ -47,9 +47,9 @@ class TranslationService:
         self.supported_formats = {'.pdf'}
         self.max_file_size = 100 * 1024 * 1024  # 100MB
         self.engines = {
-            TranslationEngine.GOOGLE: "Google翻译",
-            TranslationEngine.DEEPL: "DeepL翻译",
-            TranslationEngine.OPENAI: "OpenAI翻译",
+            TranslationEngine.GOOGLE: "Google 翻译",
+            TranslationEngine.DEEPL: "DeepL 翻译",
+            TranslationEngine.OPENAI: "OpenAI 翻译",
             TranslationEngine.BAIDU: "百度翻译",
             TranslationEngine.TENCENT: "腾讯翻译"
         }
@@ -76,7 +76,7 @@ class TranslationService:
                     )
                 except ValueError as exc:
                     raise BadRequestException(
-                        message=f"不支持的翻译引擎: {request.translation_engine}",
+                        message=f"不支持的翻译引擎：{request.translation_engine}",
                         details={"supported_engines": list(self.engines.keys())},
                     ) from exc
 
@@ -86,7 +86,7 @@ class TranslationService:
             # 验证翻译引擎
             if request.translation_engine not in self.engines:
                 raise BadRequestException(
-                    message=f"不支持的翻译引擎: {request.translation_engine}",
+                    message=f"不支持的翻译引擎：{request.translation_engine}",
                     details={"supported_engines": list(self.engines.keys())}
                 )
 
@@ -106,11 +106,11 @@ class TranslationService:
             # 保存任务配置
             await self._save_task_config(task.task_id, request)
 
-            logger.info(f"创建翻译任务成功: {task.task_id}, 用户: {user_info['user_id']}")
+            logger.info(f"创建翻译任务成功：{task.task_id}, 用户：{user_info['user_id']}")
             return task
 
         except Exception as exc:
-            logger.error(f"创建翻译任务失败: {exc}")
+            logger.error(f"创建翻译任务失败：{exc}")
             if isinstance(exc, (FileFormatException, BadRequestException)):
                 raise
             raise InternalServerException(
@@ -217,11 +217,11 @@ class TranslationService:
                 confidence=0.95  # TODO: 从翻译引擎获取置信度
             )
 
-            logger.info(f"翻译预览成功: 用户 {user_info['user_id']}, 引擎 {request.translation_engine}")
+            logger.info(f"翻译预览成功：用户 {user_info['user_id']}, 引擎 {request.translation_engine}")
             return preview
 
         except Exception as exc:
-            logger.error(f"翻译预览失败: {exc}")
+            logger.error(f"翻译预览失败：{exc}")
             raise TranslationEngineException(
                 message="翻译预览失败",
                 engine=request.translation_engine,
@@ -239,7 +239,7 @@ class TranslationService:
             file_ext = Path(file.filename).suffix.lower()
             if file_ext not in self.supported_formats:
                 raise FileFormatException(
-                    message=f"不支持的文件格式: {file_ext}",
+                    message=f"不支持的文件格式：{file_ext}",
                     file_name=file.filename,
                     supported_formats=list(self.supported_formats)
                 )
@@ -250,7 +250,7 @@ class TranslationService:
 
             if file_size > self.max_file_size:
                 raise BadRequestException(
-                    message=f"文件 {file.filename} 大小超过限制: {file_size / (1024*1024):.1f}MB > {self.max_file_size / (1024*1024):.1f}MB"
+                    message=f"文件 {file.filename} 大小超过限制：{file_size / (1024*1024):.1f}MB > {self.max_file_size / (1024*1024):.1f}MB"
                 )
 
             # 检查用户配额
@@ -284,10 +284,10 @@ class TranslationService:
             total_size += size
 
         # 基于文件大小估算处理时间（粗略估算）
-        # 假设每MB需要30秒处理时间
+        # 假设每 MB 需要 30 秒处理时间
         estimated_seconds = int((total_size / (1024 * 1024)) * 30)
 
-        # 最小30秒，最大2小时
+        # 最小 30 秒，最大 2 小时
         return max(30, min(estimated_seconds, 7200))
 
     async def _save_files(self, task_id: str, files: list[UploadFile]):
@@ -310,7 +310,7 @@ class TranslationService:
             self.task_inputs[task_id] = saved_files[0]
 
         logger.info(
-            "保存任务文件: %s, 文件数: %s, 路径: %s",
+            "保存任务文件：%s, 文件数：%s, 路径：%s",
             task_id,
             len(saved_files),
             input_dir,
@@ -339,7 +339,7 @@ class TranslationService:
         config_path = task_dir / "task_config.json"
         config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2))
         self.task_configs[task_id] = config
-        logger.info(f"保存任务配置: {task_id}")
+        logger.info(f"保存任务配置：{task_id}")
         self._initialize_task_settings(task_id, request)
 
     async def _translate_text(
@@ -351,7 +351,7 @@ class TranslationService:
     ) -> str:
         """翻译文本"""
         # TODO: 集成实际的翻译引擎
-        # 这里应该调用配置的翻译引擎API
+        # 这里应该调用配置的翻译引擎 API
 
         # 模拟翻译过程
         await asyncio.sleep(1)
@@ -365,9 +365,9 @@ class TranslationService:
             return f"[{target_language}] {text}"
 
     async def _notify_webhook(self, task_id: str, webhook_url: str, status: str):
-        """通知webhook"""
-        # TODO: 实现webhook通知逻辑
-        logger.info(f"通知webhook: {webhook_url}, 任务: {task_id}, 状态: {status}")
+        """通知 webhook"""
+        # TODO: 实现 webhook 通知逻辑
+        logger.info(f"通知 webhook: {webhook_url}, 任务：{task_id}, 状态：{status}")
 
     async def execute_task(self, task: TranslationTask) -> TranslationResult:
         """执行真实翻译流程并返回结果"""
@@ -390,7 +390,7 @@ class TranslationService:
         translate_result = None
         try:
             await task_manager.update_task_progress(
-                task_id, TranslationStage.PARSING, 15.0, "解析PDF"
+                task_id, TranslationStage.PARSING, 15.0, "解析 PDF"
             )
             await task_manager.update_task_progress(
                 task_id, TranslationStage.TRANSLATING, 60.0, "翻译进行中"
@@ -409,7 +409,7 @@ class TranslationService:
         except TranslationEngineException:
             raise
         except Exception as exc:  # noqa: BLE001
-            logger.exception("任务执行失败: %s", exc)
+            logger.exception("任务执行失败：%s", exc)
             raise TranslationEngineException(
                 message="翻译流程异常",
                 details={"error": str(exc)},
@@ -692,7 +692,7 @@ class TranslationService:
                 engine_key_value = TranslationEngine(engine_member.lower()).value
             except ValueError as exc:
                 raise BadRequestException(
-                    message=f"不支持的翻译引擎: {engine_member}",
+                    message=f"不支持的翻译引擎：{engine_member}",
                     details={"supported_engines": list(self.engines.keys())},
                 ) from exc
         else:

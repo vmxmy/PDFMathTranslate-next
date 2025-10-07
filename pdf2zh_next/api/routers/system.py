@@ -155,7 +155,7 @@ async def clear_cache(
         # TODO: 实现缓存清除逻辑
         success = True
         targets = cache_types if cache_types is not None else ["translation", "config"]
-        logger.info("清除缓存: %s", targets)
+        logger.info("清除缓存：%s", targets)
 
         return APIResponse(
             success=True,
@@ -214,7 +214,7 @@ async def restart_system(
 
         success = True
         logger.warning(
-            "系统重启请求: 类型=%s, 用户=%s",
+            "系统重启请求：类型=%s, 用户=%s",
             restart_type,
             _current_user.get("user_id", "unknown"),
         )

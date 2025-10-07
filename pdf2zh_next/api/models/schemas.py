@@ -1,4 +1,4 @@
-"""共享schema定义"""
+"""共享 schema 定义"""
 
 from datetime import datetime
 from typing import Any
@@ -15,7 +15,7 @@ T = TypeVar("T")
 
 
 class BaseSchema(BaseModel):
-    """基础schema"""
+    """基础 schema"""
 
     class Config:
         use_enum_values = True
@@ -24,7 +24,7 @@ class BaseSchema(BaseModel):
 
 
 class ErrorDetail(BaseSchema):
-    """错误详情schema"""
+    """错误详情 schema"""
 
     code: ErrorCode
     message: str
@@ -44,7 +44,7 @@ class PaginationParams(BaseSchema):
 
 
 class PaginatedResponse(BaseSchema, Generic[T]):
-    """分页响应schema"""
+    """分页响应 schema"""
 
     items: list[T] = Field(description="数据项列表")
     total: int = Field(description="总记录数")
@@ -78,15 +78,15 @@ class PaginatedResponse(BaseSchema, Generic[T]):
 
 
 class APIResponse(BaseSchema, Generic[T]):
-    """统一API响应schema"""
+    """统一 API 响应 schema"""
 
     success: bool = Field(description="请求是否成功")
     data: T | None = Field(None, description="响应数据")
     error: ErrorDetail | None = Field(None, description="错误信息")
     metadata: dict[str, Any] | None = Field(None, description="元数据")
     timestamp: datetime = Field(description="响应时间戳")
-    request_id: str = Field(description="请求ID")
-    version: str = Field("v1", description="API版本")
+    request_id: str = Field(description="请求 ID")
+    version: str = Field("v1", description="API 版本")
 
     @field_validator("error")
     @classmethod

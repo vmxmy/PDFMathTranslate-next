@@ -22,21 +22,21 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer()
 BearerCredentials = Annotated[HTTPAuthorizationCredentials, Security(security)]
 
-# 全局请求ID存储
+# 全局请求 ID 存储
 _request_id_context = {}
 
 
 def get_request_id() -> str:
-    """获取当前请求的ID"""
+    """获取当前请求的 ID"""
     return _request_id_context.get("request_id", "unknown")
 
 
 async def set_request_id(request: Request) -> str:
-    """设置请求ID"""
+    """设置请求 ID"""
     request_id = str(uuid.uuid4())
     _request_id_context["request_id"] = request_id
 
-    # 将请求ID添加到请求对象中，供后续使用
+    # 将请求 ID 添加到请求对象中，供后续使用
     request.state.request_id = request_id
     return request_id
 
@@ -45,13 +45,13 @@ class AuthService:
     """认证服务"""
 
     def __init__(self):
-        # TODO: 从配置文件或数据库加载API密钥
+        # TODO: 从配置文件或数据库加载 API 密钥
         self.api_keys = {
             "test-key-1": {
                 "user_id": "user-123",
                 "role": UserRole.USER,
                 "permissions": ["translate", "read_config"],
-                "rate_limit": 60,  # 每分钟60次
+                "rate_limit": 60,  # 每分钟 60 次
                 "max_file_size": 100 * 1024 * 1024,  # 100MB
                 "max_concurrent_tasks": 3,
                 "allowed_engines": ["google", "deepl", "baidu"],
@@ -63,7 +63,7 @@ class AuthService:
                 "user_id": "admin-456",
                 "role": UserRole.ADMIN,
                 "permissions": ["*"],  # 所有权限
-                "rate_limit": 1000,  # 每分钟1000次
+                "rate_limit": 1000,  # 每分钟 1000 次
                 "max_file_size": 500 * 1024 * 1024,  # 500MB
                 "max_concurrent_tasks": 20,
                 "allowed_engines": ["google", "deepl", "openai", "baidu", "tencent"],
@@ -76,13 +76,13 @@ class AuthService:
     async def verify_api_key(
         self, credentials: HTTPAuthorizationCredentials
     ) -> dict[str, Any]:
-        """验证API密钥"""
+        """验证 API 密钥"""
         api_key = credentials.credentials
 
         if api_key not in self.api_keys:
             raise UnauthorizedException(
-                message="无效的API密钥",
-                details={"api_key": api_key[:8] + "..."},  # 只显示前8位
+                message="无效的 API 密钥",
+                details={"api_key": api_key[:8] + "..."},  # 只显示前 8 位
             )
 
         user_info = self.api_keys[api_key].copy()
@@ -90,26 +90,26 @@ class AuthService:
 
         # 记录认证成功
         logger.info(
-            f"API密钥认证成功: 用户={user_info['user_id']}, 角色={user_info['role']}"
+            f"API 密钥认证成功：用户={user_info['user_id']}, 角色={user_info['role']}"
         )
 
         return user_info
 
     async def check_rate_limit(self, user_info: dict[str, Any], endpoint: str) -> bool:
         """检查速率限制"""
-        # TODO: 实现基于Redis的分布式速率限制
-        # 这里简化处理，实际应该使用Redis等外部存储
+        # TODO: 实现基于 Redis 的分布式速率限制
+        # 这里简化处理，实际应该使用 Redis 等外部存储
 
         rate_limit = user_info.get("rate_limit", 60)
         # 这里应该检查实际的请求频率
-        # 暂时返回True，表示未超限
+        # 暂时返回 True，表示未超限
 
         return True
 
     async def log_access(self, user_info: dict[str, Any], endpoint: str, method: str):
         """记录访问日志"""
         logger.info(
-            f"API访问: 用户={user_info['user_id']}, 端点={method} {endpoint}, 角色={user_info['role']}"
+            f"API 访问：用户={user_info['user_id']}, 端点={method} {endpoint}, 角色={user_info['role']}"
         )
 
 
@@ -130,7 +130,7 @@ async def get_current_user(
     request.state.user_info = user_info
 
     # 检查速率限制
-    # TODO: 从request对象获取endpoint信息
+    # TODO: 从 request 对象获取 endpoint 信息
     # await auth_service.check_rate_limit(user_info, endpoint)
 
     return user_info

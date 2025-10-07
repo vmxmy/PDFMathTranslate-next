@@ -1,4 +1,4 @@
-"""API枚举定义"""
+"""API 枚举定义"""
 
 from enum import Enum
 

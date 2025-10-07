@@ -52,12 +52,12 @@ class TranslationProgress(BaseSchema):
 
 class TranslationFile(BaseSchema):
     """翻译文件模型"""
-    file_id: str = Field(description="文件ID")
+    file_id: str = Field(description="文件 ID")
     original_name: str = Field(description="原始文件名")
     translated_name: str = Field(description="翻译后的文件名")
     size: int = Field(description="文件大小（字节）")
     page_count: int = Field(description="页数")
-    download_url: str = Field(description="下载URL")
+    download_url: str = Field(description="下载 URL")
     expires_at: datetime = Field(description="下载链接过期时间")
 
 
@@ -74,7 +74,7 @@ class TranslationResult(BaseSchema):
 
 class TranslationTask(BaseSchema):
     """翻译任务模型"""
-    task_id: str = Field(description="任务ID")
+    task_id: str = Field(description="任务 ID")
     status: TaskStatus = Field(description="任务状态")
     created_at: datetime = Field(description="创建时间")
     updated_at: datetime = Field(description="更新时间")
@@ -82,7 +82,7 @@ class TranslationTask(BaseSchema):
     completed_at: datetime | None = Field(None, description="完成时间")
     progress: TranslationProgress = Field(description="任务进度")
     result: TranslationResult | None = Field(None, description="翻译结果")
-    user_id: str = Field(description="用户ID")
+    user_id: str = Field(description="用户 ID")
     priority: int = Field(description="任务优先级")
     estimated_duration: int | None = Field(None, description="预计处理时间（秒）")
     retry_count: int = Field(0, description="重试次数")
@@ -92,7 +92,7 @@ class TranslationTask(BaseSchema):
     @classmethod
     def validate_priority(cls, v):
         if not 1 <= v <= 5:
-            raise ValueError('优先级必须在1-5之间')
+            raise ValueError('优先级必须在 1-5 之间')
         return v
 
     @field_validator("retry_count", "max_retries")
@@ -137,7 +137,7 @@ class OfflineAssetStatus(BaseSchema):
 class ConfigResponse(BaseSchema):
     """配置响应模型"""
     current_config: dict[str, Any] = Field(description="当前配置")
-    schema: dict[str, Any] = Field(description="配置schema")
+    schema: dict[str, Any] = Field(description="配置 schema")
     last_updated: datetime = Field(description="最后更新时间")
     validation_errors: list[str] | None = Field(None, description="验证错误")
 
@@ -146,16 +146,16 @@ class HealthStatus(BaseSchema):
     """健康状态模型"""
     status: str = Field(description="整体健康状态")
     timestamp: datetime = Field(description="检查时间戳")
-    version: str = Field(description="API版本")
+    version: str = Field(description="API 版本")
     uptime_seconds: float = Field(description="运行时间（秒）")
     dependencies: dict[str, Any] = Field(description="依赖服务状态")
     performance_metrics: dict[str, float] = Field(description="性能指标")
 
 
 class WebhookTestResponse(BaseSchema):
-    """Webhook测试响应"""
-    webhook_url: str = Field(description="测试的webhook URL")
-    status_code: int = Field(description="HTTP状态码")
+    """Webhook 测试响应"""
+    webhook_url: str = Field(description="测试的 webhook URL")
+    status_code: int = Field(description="HTTP 状态码")
     response_time_ms: int = Field(description="响应时间（毫秒）")
     response_body: str | None = Field(None, description="响应体")
     success: bool = Field(description="是否成功")
@@ -171,14 +171,14 @@ class BatchOperationResponse(BaseSchema):
 
 class UserInfo(BaseSchema):
     """用户信息模型"""
-    user_id: str = Field(description="用户ID")
+    user_id: str = Field(description="用户 ID")
     role: UserRole = Field(description="用户角色")
     permissions: list[str] = Field(description="权限列表")
     rate_limit: int = Field(description="速率限制（每分钟）")
     max_file_size: int = Field(description="最大文件大小（字节）")
     max_concurrent_tasks: int = Field(description="最大并发任务数")
     allowed_engines: list[TranslationEngine] = Field(description="允许的翻译引擎")
-    webhook_support: bool = Field(description="是否支持webhook")
+    webhook_support: bool = Field(description="是否支持 webhook")
     quota_used: int = Field(description="已使用配额")
     quota_limit: int = Field(description="配额限制")
 

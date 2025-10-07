@@ -55,9 +55,9 @@ class SystemService:
                     preloaded_engines.append(engine)
                     self.warmed_engines.add(engine)
 
-                    logger.info(f"翻译引擎预热成功: {engine}")
+                    logger.info(f"翻译引擎预热成功：{engine}")
                 except Exception as e:
-                    logger.error(f"翻译引擎预热失败: {engine}, {e}")
+                    logger.error(f"翻译引擎预热失败：{engine}, {e}")
                     if cache_models:
                         cache_status[engine] = False
                     if test_connections:
@@ -77,11 +77,11 @@ class SystemService:
                 memory_usage=memory_usage
             )
 
-            logger.info(f"系统预热完成，耗时: {duration_ms}ms")
+            logger.info(f"系统预热完成，耗时：{duration_ms}ms")
             return response
 
         except Exception as exc:
-            logger.error(f"系统预热失败: {exc}")
+            logger.error(f"系统预热失败：{exc}")
             raise InternalServerException(
                 message="系统预热失败",
                 details={"error": str(exc)}
@@ -90,7 +90,7 @@ class SystemService:
     async def generate_offline_assets(self, asset_types: list[str], languages: list[str] | None, include_dependencies: bool, compression_level: int) -> list[OfflineAssetStatus]:
         """生成离线资源"""
         try:
-            logger.info(f"开始生成离线资源: {asset_types}")
+            logger.info(f"开始生成离线资源：{asset_types}")
 
             results = []
 
@@ -99,9 +99,9 @@ class SystemService:
                     result = await self._generate_asset_type(asset_type, languages, include_dependencies, compression_level)
                     results.append(result)
                     self.offline_assets[asset_type] = result
-                    logger.info(f"离线资源生成成功: {asset_type}")
+                    logger.info(f"离线资源生成成功：{asset_type}")
                 except Exception as e:
-                    logger.error(f"离线资源生成失败: {asset_type}, {e}")
+                    logger.error(f"离线资源生成失败：{asset_type}, {e}")
                     # 继续处理其他资源类型
                     continue
 
@@ -114,7 +114,7 @@ class SystemService:
             return results
 
         except Exception as exc:
-            logger.error(f"生成离线资源失败: {exc}")
+            logger.error(f"生成离线资源失败：{exc}")
             if isinstance(exc, InternalServerException):
                 raise
             raise InternalServerException(
@@ -125,7 +125,7 @@ class SystemService:
     async def restore_offline_assets(self, asset_types: list[str]) -> bool:
         """恢复离线资源"""
         try:
-            logger.info(f"开始恢复离线资源: {asset_types}")
+            logger.info(f"开始恢复离线资源：{asset_types}")
 
             success_count = 0
             for asset_type in asset_types:
@@ -133,11 +133,11 @@ class SystemService:
                     if asset_type in self.offline_assets:
                         await self._restore_asset_type(asset_type)
                         success_count += 1
-                        logger.info(f"离线资源恢复成功: {asset_type}")
+                        logger.info(f"离线资源恢复成功：{asset_type}")
                     else:
-                        logger.warning(f"离线资源不存在: {asset_type}")
+                        logger.warning(f"离线资源不存在：{asset_type}")
                 except Exception as e:
-                    logger.error(f"离线资源恢复失败: {asset_type}, {e}")
+                    logger.error(f"离线资源恢复失败：{asset_type}, {e}")
                     continue
 
             if success_count == 0:
@@ -149,7 +149,7 @@ class SystemService:
             return success_count == len(asset_types)
 
         except Exception as exc:
-            logger.error(f"恢复离线资源失败: {exc}")
+            logger.error(f"恢复离线资源失败：{exc}")
             if isinstance(exc, BadRequestException):
                 raise
             raise InternalServerException(
@@ -194,7 +194,7 @@ class SystemService:
             )
 
         except Exception as exc:
-            logger.error(f"获取健康状态失败: {exc}")
+            logger.error(f"获取健康状态失败：{exc}")
             raise InternalServerException(
                 message="获取健康状态失败",
                 details={"error": str(exc)}
@@ -239,7 +239,7 @@ class SystemService:
             }
 
         except Exception as exc:
-            logger.error(f"获取系统信息失败: {exc}")
+            logger.error(f"获取系统信息失败：{exc}")
             raise InternalServerException(
                 message="获取系统信息失败",
                 details={"error": str(exc)}
@@ -248,13 +248,13 @@ class SystemService:
     async def _preload_engine_model(self, engine: TranslationEngine):
         """预加载翻译引擎模型"""
         # TODO: 实现实际的模型预加载逻辑
-        logger.info(f"预加载翻译引擎模型: {engine}")
+        logger.info(f"预加载翻译引擎模型：{engine}")
         await asyncio.sleep(1)  # 模拟加载时间
 
     async def _test_engine_connection(self, engine: TranslationEngine) -> bool:
         """测试翻译引擎连接"""
         # TODO: 实现实际的连接测试逻辑
-        logger.info(f"测试翻译引擎连接: {engine}")
+        logger.info(f"测试翻译引擎连接：{engine}")
         await asyncio.sleep(0.5)  # 模拟测试时间
         return True
 
@@ -263,7 +263,7 @@ class SystemService:
         from datetime import datetime
         from datetime import timedelta
 
-        logger.info(f"生成离线资源: {asset_type}, 语言: {languages}")
+        logger.info(f"生成离线资源：{asset_type}, 语言：{languages}")
 
         # 模拟资源生成过程
         await asyncio.sleep(2)
@@ -287,11 +287,11 @@ class SystemService:
             languages = languages or ["zh", "en", "ja", "ko"]
         else:
             raise BadRequestException(
-                message=f"不支持的离线资源类型: {asset_type}",
+                message=f"不支持的离线资源类型：{asset_type}",
                 details={"supported_types": ["translation_models", "language_packs", "fonts"]}
             )
 
-        compression_ratio = 0.7  # 假设压缩率为70%
+        compression_ratio = 0.7  # 假设压缩率为 70%
 
         return OfflineAssetStatus(
             asset_type=asset_type,
@@ -305,7 +305,7 @@ class SystemService:
 
     async def _restore_asset_type(self, asset_type: str):
         """恢复特定类型的离线资源"""
-        logger.info(f"恢复离线资源: {asset_type}")
+        logger.info(f"恢复离线资源：{asset_type}")
         # 模拟资源恢复过程
         await asyncio.sleep(1)
 
@@ -351,8 +351,8 @@ class SystemService:
         }
 
     async def _check_redis(self) -> dict[str, Any]:
-        """检查Redis连接"""
-        # TODO: 实现实际的Redis连接检查
+        """检查 Redis 连接"""
+        # TODO: 实现实际的 Redis 连接检查
         return {
             "status": "healthy",
             "latency_ms": 2,

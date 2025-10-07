@@ -1,4 +1,4 @@
-"""主FastAPI应用"""
+"""主 FastAPI 应用"""
 
 import logging
 import time
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
-    logger.info("正在启动PDFMathTranslate API服务...")
+    logger.info("正在启动 PDFMathTranslate API 服务...")
 
     try:
         # 初始化任务管理器
@@ -52,33 +52,33 @@ async def lifespan(_app: FastAPI):
         config_service.get_config()
         logger.info("配置服务初始化成功")
 
-        logger.info("PDFMathTranslate API服务启动成功")
+        logger.info("PDFMathTranslate API 服务启动成功")
 
     except Exception as e:
-        logger.error(f"服务启动失败: {e}")
+        logger.error(f"服务启动失败：{e}")
         raise
 
     yield
 
     # 关闭时执行
-    logger.info("正在关闭PDFMathTranslate API服务...")
+    logger.info("正在关闭 PDFMathTranslate API 服务...")
 
     try:
         # 关闭任务管理器
         await task_manager.shutdown()
         logger.info("任务管理器关闭成功")
 
-        logger.info("PDFMathTranslate API服务关闭成功")
+        logger.info("PDFMathTranslate API 服务关闭成功")
 
     except Exception as e:
-        logger.error(f"服务关闭失败: {e}")
+        logger.error(f"服务关闭失败：{e}")
 
 
 def create_app() -> FastAPI:
-    """创建FastAPI应用"""
+    """创建 FastAPI 应用"""
     app = FastAPI(
         title="PDFMathTranslate API",
-        description="专业PDF文档翻译服务，支持数学公式、图表和格式保持",
+        description="专业 PDF 文档翻译服务，支持数学公式、图表和格式保持",
         version="1.0.0",
         terms_of_service="https://pdf2zh.com/terms/",
         contact={
@@ -101,7 +101,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # 配置CORS
+    # 配置 CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -116,7 +116,7 @@ def create_app() -> FastAPI:
     # 注册全局异常处理
     @app.exception_handler(APIException)
     async def api_exception_handler(_request: Request, exc: APIException):
-        """处理API异常"""
+        """处理 API 异常"""
         request_id = get_request_id()
 
         error_detail = ErrorDetail(
@@ -150,7 +150,7 @@ def create_app() -> FastAPI:
         request_id = get_request_id()
 
         logger.error(
-            f"内部服务器错误: {exc.message}, 请求ID: {request_id}", exc_info=True
+            f"内部服务器错误：{exc.message}, 请求 ID: {request_id}", exc_info=True
         )
 
         return JSONResponse(
@@ -174,7 +174,7 @@ def create_app() -> FastAPI:
         """处理未捕获的异常"""
         request_id = get_request_id()
 
-        logger.error(f"未捕获的异常: {exc}, 请求ID: {request_id}", exc_info=True)
+        logger.error(f"未捕获的异常：{exc}, 请求 ID: {request_id}", exc_info=True)
 
         return JSONResponse(
             status_code=500,
@@ -211,7 +211,7 @@ def create_app() -> FastAPI:
     app.include_router(config_router, prefix="/v1")
     app.include_router(health_router, prefix="/v1")
 
-    # 自定义OpenAPI schema
+    # 自定义 OpenAPI schema
     def custom_openapi():
         if app.openapi_schema:
             return app.openapi_schema
@@ -231,7 +231,7 @@ def create_app() -> FastAPI:
                 "type": "http",
                 "scheme": "bearer",
                 "bearerFormat": "JWT",
-                "description": "使用API密钥进行认证，在Authorization头中添加Bearer token",
+                "description": "使用 API 密钥进行认证，在 Authorization 头中添加 Bearer token",
             }
         }
 

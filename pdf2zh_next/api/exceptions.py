@@ -1,4 +1,4 @@
-"""API异常定义"""
+"""API 异常定义"""
 
 from typing import Any
 
@@ -9,7 +9,7 @@ from .models.enums import ErrorCode
 
 
 class APIException(HTTPException):
-    """API基础异常"""
+    """API 基础异常"""
 
     def __init__(
         self,
@@ -243,7 +243,7 @@ class TimeoutException(APIException):
 def create_validation_exception(field: str, message: str) -> BadRequestException:
     """创建验证异常"""
     return BadRequestException(
-        message=f"参数验证失败: {message}", details={"field": field, "message": message}
+        message=f"参数验证失败：{message}", details={"field": field, "message": message}
     )
 
 

@@ -35,8 +35,8 @@ class TaskManager:
         self.task_queue: asyncio.Queue = asyncio.Queue()
         self.worker_tasks: list[asyncio.Task] = []
         self.max_concurrent_tasks = 10
-        self.task_timeout = 3600  # 1小时
-        self.cleanup_interval = 300  # 5分钟
+        self.task_timeout = 3600  # 1 小时
+        self.cleanup_interval = 300  # 5 分钟
         self.translation_service: TranslationService | None = None
 
     async def initialize(self):
@@ -112,7 +112,7 @@ class TaskManager:
         # 添加到队列
         await self.task_queue.put((priority, task_id))
 
-        logger.info(f"创建任务成功: {task_id}, 用户: {user_id}, 优先级: {priority}")
+        logger.info(f"创建任务成功：{task_id}, 用户：{user_id}, 优先级：{priority}")
         return task
 
     async def get_task(self, task_id: str, user_id: str) -> TranslationTask:
@@ -120,14 +120,14 @@ class TaskManager:
         task = self.tasks.get(task_id)
         if not task:
             raise NotFoundException(
-                message=f"任务不存在: {task_id}",
+                message=f"任务不存在：{task_id}",
                 resource="translation_task",
                 resource_id=task_id,
             )
 
         # 检查权限
         if task.user_id != user_id:
-            raise ForbiddenException(message=f"无权访问任务: {task_id}")
+            raise ForbiddenException(message=f"无权访问任务：{task_id}")
 
         return task
 
@@ -142,7 +142,7 @@ class TaskManager:
         """更新任务进度"""
         task = self.tasks.get(task_id)
         if not task:
-            logger.warning(f"尝试更新不存在的任务: {task_id}")
+            logger.warning(f"尝试更新不存在的任务：{task_id}")
             return
 
         now = datetime.now()
@@ -170,13 +170,13 @@ class TaskManager:
 
                 break
 
-        logger.debug(f"更新任务进度: {task_id}, 阶段: {stage}, 进度: {progress}%")
+        logger.debug(f"更新任务进度：{task_id}, 阶段：{stage}, 进度：{progress}%")
 
     async def complete_task(self, task_id: str, result: TranslationResult):
         """完成任务"""
         task = self.tasks.get(task_id)
         if not task:
-            logger.warning(f"尝试完成不存在的任务: {task_id}")
+            logger.warning(f"尝试完成不存在的任务：{task_id}")
             return
 
         now = datetime.now()
@@ -196,13 +196,13 @@ class TaskManager:
 
         task.result = result
 
-        logger.info(f"任务完成: {task_id}")
+        logger.info(f"任务完成：{task_id}")
 
     async def fail_task(self, task_id: str, error: ErrorDetail):
         """失败任务"""
         task = self.tasks.get(task_id)
         if not task:
-            logger.warning(f"尝试失败不存在的任务: {task_id}")
+            logger.warning(f"尝试失败不存在的任务：{task_id}")
             return
 
         now = datetime.now()
@@ -252,7 +252,7 @@ class TaskManager:
 
         # 记录失败详情，便于排查
         logger.error(
-            "任务失败: %s | code=%s | message=%s | retryable=%s | details=%s",
+            "任务失败：%s | code=%s | message=%s | retryable=%s | details=%s",
             task_id,
             error.code,
             error.message,
@@ -276,7 +276,7 @@ class TaskManager:
         task.status = TaskStatus.CANCELLED
         task.updated_at = datetime.now()
 
-        logger.info(f"任务已取消: {task_id}")
+        logger.info(f"任务已取消：{task_id}")
         return True
 
     async def delete_task(self, task_id: str, user_id: str) -> bool:
@@ -284,12 +284,12 @@ class TaskManager:
         task = await self.get_task(task_id, user_id)
 
         if task.status not in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
-            raise BadRequestException(message=f"只能删除已完成或失败的任务: {task_id}")
+            raise BadRequestException(message=f"只能删除已完成或失败的任务：{task_id}")
 
         # 从任务列表中删除
         del self.tasks[task_id]
 
-        logger.info(f"任务已删除: {task_id}")
+        logger.info(f"任务已删除：{task_id}")
         return True
 
     async def list_tasks(
@@ -438,7 +438,7 @@ class TaskManager:
 
     async def _worker(self, worker_id: str):
         """工作进程"""
-        logger.info(f"工作进程启动: {worker_id}")
+        logger.info(f"工作进程启动：{worker_id}")
 
         try:
             while True:
@@ -452,7 +452,7 @@ class TaskManager:
 
                 task = self.tasks.get(task_id)
                 if not task:
-                    logger.warning(f"工作进程 {worker_id} 获取不到任务: {task_id}")
+                    logger.warning(f"工作进程 {worker_id} 获取不到任务：{task_id}")
                     continue
 
                 try:
@@ -468,7 +468,7 @@ class TaskManager:
                         else "unknown"
                     )
                     logger.exception(
-                        "工作进程 %s 处理任务 %s 出错: %s | status=%s | stage=%s | priority=%s | error_type=%s",
+                        "工作进程 %s 处理任务 %s 出错：%s | status=%s | stage=%s | priority=%s | error_type=%s",
                         worker_id,
                         task_id,
                         exc,
@@ -479,15 +479,15 @@ class TaskManager:
                     )
 
         except asyncio.CancelledError:
-            logger.info(f"工作进程关闭: {worker_id}")
+            logger.info(f"工作进程关闭：{worker_id}")
             raise
         except Exception as e:
-            logger.error(f"工作进程 {worker_id} 异常: {e}")
+            logger.error(f"工作进程 {worker_id} 异常：{e}")
             raise
 
     async def _process_task(self, task_id: str, worker_id: str):
         """处理任务"""
-        logger.info(f"工作进程 {worker_id} 开始处理任务: {task_id}")
+        logger.info(f"工作进程 {worker_id} 开始处理任务：{task_id}")
 
         task = self.tasks[task_id]
         task.status = TaskStatus.RUNNING
@@ -497,9 +497,9 @@ class TaskManager:
             if not self.translation_service:
                 raise RuntimeError("Translation service not available")
             await self.translation_service.execute_task(task)
-            logger.info(f"工作进程 {worker_id} 完成任务: {task_id}")
+            logger.info(f"工作进程 {worker_id} 完成任务：{task_id}")
         except Exception as exc:
-            logger.error(f"任务 {task_id} 执行失败: {exc}")
+            logger.error(f"任务 {task_id} 执行失败：{exc}")
             error = ErrorDetail(
                 code="INTERNAL_ERROR",
                 message=str(exc),
@@ -521,7 +521,7 @@ class TaskManager:
     async def _cleanup_old_tasks(self):
         """清理旧任务"""
         now = datetime.now()
-        cutoff_time = now - timedelta(hours=24)  # 24小时前的任务
+        cutoff_time = now - timedelta(hours=24)  # 24 小时前的任务
 
         tasks_to_remove = []
         for task_id, task in self.tasks.items():
@@ -535,7 +535,7 @@ class TaskManager:
 
         for task_id in tasks_to_remove:
             del self.tasks[task_id]
-            logger.info(f"清理旧任务: {task_id}")
+            logger.info(f"清理旧任务：{task_id}")
 
 
 # 全局任务管理器实例

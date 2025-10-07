@@ -1,4 +1,4 @@
-"""API数据模型模块"""
+"""API 数据模型模块"""
 
 from .enums import ErrorCode
 from .enums import OfflineAssetType

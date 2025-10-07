@@ -38,21 +38,21 @@ CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
 
 @router.post("/", response_model=APIResponse[TranslationTask])
 async def create_translation(
-    files: Annotated[ list[UploadFile], File(..., description="要翻译的PDF文件列表") ],
+    files: Annotated[ list[UploadFile], File(..., description="要翻译的 PDF 文件列表") ],
     target_language: Annotated[str, Form(description="目标语言代码")] = "zh",
     source_language: Annotated[str | None, Form(description="源语言代码（可选，自动检测）")] = None,
     translation_engine: Annotated[str, Form(description="翻译引擎")] = "google",
     preserve_formatting: Annotated[bool, Form(description="是否保持格式")] = True,
     translate_tables: Annotated[bool, Form(description="是否翻译表格")] = True,
     translate_equations: Annotated[bool, Form(description="是否处理数学公式")] = True,
-    custom_glossary: Annotated[str | None, Form(description="自定义术语词典（JSON格式）")] = None,
-    webhook_url: Annotated[str | None, Form(description="完成通知的webhook URL")] = None,
-    priority: Annotated[int, Form(ge=1, le=5, description="任务优先级（1-5，5最高）")] = 1,
+    custom_glossary: Annotated[str | None, Form(description="自定义术语词典（JSON 格式）")] = None,
+    webhook_url: Annotated[str | None, Form(description="完成通知的 webhook URL")] = None,
+    priority: Annotated[int, Form(ge=1, le=5, description="任务优先级（1-5，5 最高）")] = 1,
     timeout: Annotated[int | None, Form(ge=60, description="超时时间（秒）")] = None,
     *,
     current_user: CurrentUser,
 ):
-    """创建PDF翻译任务"""
+    """创建 PDF 翻译任务"""
     try:
         # 解析自定义术语词典
         glossary_dict = None
@@ -63,7 +63,7 @@ async def create_translation(
                 glossary_dict = json.loads(custom_glossary)
             except json.JSONDecodeError as exc:
                 raise create_validation_exception(
-                    "custom_glossary", f"无效的JSON格式: {exc}"
+                    "custom_glossary", f"无效的 JSON 格式：{exc}"
                 ) from exc
 
         # 构建请求对象
@@ -267,7 +267,7 @@ async def list_translation_tasks(
             "sort_order": sort_order,
         }
 
-        # 移除None值
+        # 移除 None 值
         filters = {k: v for k, v in filters.items() if v is not None}
 
         # 获取任务列表
@@ -344,9 +344,9 @@ async def preview_translation(
 async def test_webhook(
     webhook_url: str, _current_user: CurrentUser
 ):
-    """测试webhook连接"""
+    """测试 webhook 连接"""
     try:
-        # TODO: 实现webhook测试逻辑
+        # TODO: 实现 webhook 测试逻辑
         result = {
             "webhook_url": webhook_url,
             "status_code": 200,

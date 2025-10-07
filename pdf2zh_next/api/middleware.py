@@ -1,4 +1,4 @@
-"""API中间件模块"""
+"""API 中间件模块"""
 
 import logging
 import time
@@ -37,7 +37,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         self.logger = logging.getLogger("api.access")
 
     async def dispatch(self, request: Request, call_next):
-        # 设置请求ID
+        # 设置请求 ID
         request_id = await set_request_id(request)
 
         # 记录请求开始
@@ -84,11 +84,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, default_limit: int = 60):
         super().__init__(app)
         self.default_limit = default_limit
-        # TODO: 使用Redis存储请求计数
+        # TODO: 使用 Redis 存储请求计数
         self.request_counts: dict[str, dict[str, Any]] = {}
 
     async def dispatch(self, request: Request, call_next):
-        # 跳过健康检查等非API请求
+        # 跳过健康检查等非 API 请求
         if (
             request.url.path in HEALTH_ENDPOINT_WHITELIST
             or request.url.path.startswith("/health")
@@ -117,7 +117,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if not user_info:
-            rate_limit = 10  # 每分钟10次
+            rate_limit = 10  # 每分钟 10 次
             user_id = (
                 f"anonymous:{request.client.host if request.client else 'unknown'}"
             )
@@ -172,7 +172,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """清理旧的请求计数记录"""
         # TODO: 定期清理过期的记录
         current_time = int(time.time())
-        expired_time = current_time - 3600  # 1小时前的记录
+        expired_time = current_time - 3600  # 1 小时前的记录
 
         expired_users = []
         for user_id, data in self.request_counts.items():
@@ -184,7 +184,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 class CORSMiddleware(BaseHTTPMiddleware):
-    """CORS中间件（如果需要在应用级别处理）"""
+    """CORS 中间件（如果需要在应用级别处理）"""
 
     def __init__(
         self, app: ASGIApp, allow_origins: list = None, allow_credentials: bool = True
@@ -206,7 +206,7 @@ class CORSMiddleware(BaseHTTPMiddleware):
         return response
 
     def _set_cors_headers(self, response: Response, request: Request):
-        """设置CORS响应头"""
+        """设置 CORS 响应头"""
         origin = request.headers.get("origin")
 
         if "*" in self.allow_origins:
@@ -273,7 +273,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-        # 如果HTTPS，添加HSTS
+        # 如果 HTTPS，添加 HSTS
         if request.url.scheme == "https":
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"
@@ -298,7 +298,7 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
         process_time = time.time() - start_time
 
         # 记录慢请求
-        if process_time > 5.0:  # 超过5秒的请求
+        if process_time > 5.0:  # 超过 5 秒的请求
             request_id = getattr(request.state, "request_id", "unknown")
             logger.warning(
                 f"Slow request detected: {process_time:.2f}s, Request ID: {request_id}"

@@ -46,7 +46,7 @@ async def get_config(_current_user: CurrentUser):
 
 @router.get("/schema", response_model=APIResponse[dict[str, Any]])
 async def get_config_schema(_current_user: CurrentUser):
-    """获取配置schema"""
+    """获取配置 schema"""
     try:
         schema = config_service.get_config_schema()
 
@@ -193,7 +193,7 @@ async def update_system_config(
 
 @router.get("/api", response_model=APIResponse[dict[str, Any]])
 async def get_api_config(_current_user: CurrentUser):
-    """获取API配置"""
+    """获取 API 配置"""
     try:
         config = config_service.get_api_config()
 
@@ -215,7 +215,7 @@ async def update_api_config(
     _current_user: AdminUser,
     validation_mode: ValidationMode = ValidationMode.STRICT,
 ):
-    """更新API配置"""
+    """更新 API 配置"""
     try:
         from ..models import ConfigUpdateRequest
 

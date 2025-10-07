@@ -1,4 +1,4 @@
-"""PDFMathTranslate API模块"""
+"""PDFMathTranslate API 模块"""
 from .app import app
 from .app import create_app
 

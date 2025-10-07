@@ -143,7 +143,7 @@ async def get_error_codes():
             "TASK_NOT_FOUND": {
                 "code": "TASK_NOT_FOUND",
                 "message": "任务不存在",
-                "description": "请求的任务ID不存在",
+                "description": "请求的任务 ID 不存在",
                 "retryable": False,
                 "http_status": 404,
             },
