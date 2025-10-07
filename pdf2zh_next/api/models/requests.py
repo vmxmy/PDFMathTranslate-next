@@ -25,6 +25,9 @@ class TranslationRequest(BaseSchema):
     )
     preserve_formatting: bool = Field(True, description="是否保持格式")
     translate_tables: bool = Field(True, description="是否翻译表格")
+    disable_rapidocr: bool = Field(
+        True, description="是否强制禁用 RapidOCR 模型加载"
+    )
     translate_equations: bool = Field(True, description="是否处理数学公式")
     custom_glossary: dict[str, str] | None = Field(None, description="自定义术语词典")
     webhook_url: str | None = Field(None, description="完成通知的 webhook URL")

@@ -516,11 +516,18 @@ def create_babeldoc_config(settings: SettingsModel, file: Path) -> BabelDOCConfi
     )
 
     table_model = None
-    if settings.pdf.translate_table_text:
+    should_load_rapidocr = (
+        settings.pdf.translate_table_text and not settings.pdf.disable_rapidocr
+    )
+    if should_load_rapidocr:
         logger.info("Table translation enabled; initializing RapidOCR model")
         from babeldoc.docvision.table_detection.rapidocr import RapidOCRModel
 
         table_model = RapidOCRModel()
+    elif settings.pdf.translate_table_text and settings.pdf.disable_rapidocr:
+        logger.info(
+            "Table translation requested but RapidOCR loading disabled; skipping RapidOCR model initialization"
+        )
     else:
         logger.info("Table translation disabled; skipping RapidOCR model initialization")
 

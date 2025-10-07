@@ -711,6 +711,7 @@ class TranslationService:
             },
             "pdf": {
                 "translate_table_text": request.translate_tables,
+                "disable_rapidocr": request.disable_rapidocr,
             },
         }
         if request.source_language:

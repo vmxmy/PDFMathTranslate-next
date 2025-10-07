@@ -170,6 +170,13 @@ class PDFSettings(BaseModel):
     translate_table_text: bool = Field(
         default=False, description="Translate table text (experimental)"
     )
+    disable_rapidocr: bool = Field(
+        default=False,
+        description=(
+            "Skip loading the RapidOCR table detection model even when table text "
+            "translation is enabled"
+        ),
+    )
     skip_scanned_detection: bool = Field(
         default=False, description="Skip scanned detection"
     )

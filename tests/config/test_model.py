@@ -104,6 +104,7 @@ class TestPDFSettings:
         assert settings.watermark_output_mode == "watermarked"
         assert settings.max_pages_per_part is None
         assert settings.translate_table_text is False
+        assert settings.disable_rapidocr is False
 
     def test_watermark_mode_validation(self):
         """Test watermark mode validation"""
