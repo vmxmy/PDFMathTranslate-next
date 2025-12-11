@@ -381,17 +381,25 @@ class TranslationService:
                 logger.info(f"使用已存在的任务目录：{task_dir}")
 
             logger.info(f"构建配置对象：{task_id}")
+            engine_value = (
+                request.translation_engine.value
+                if isinstance(request.translation_engine, TranslationEngine)
+                else request.translation_engine
+            )
+
             config = {
                 "target_language": request.target_language,
                 "source_language": request.source_language,
-                "translation_engine": request.translation_engine,
+                "translation_engine": engine_value,
                 "preserve_formatting": request.preserve_formatting,
                 "translate_tables": request.translate_tables,
                 "translate_equations": request.translate_equations,
+                "disable_rapidocr": request.disable_rapidocr,
                 "custom_glossary": request.custom_glossary,
                 "webhook_url": request.webhook_url,
                 "priority": request.priority,
-                "timeout": request.timeout
+                "timeout": request.timeout,
+                "settings_json": request.settings_json,
             }
 
             logger.info(f"写入配置文件：{task_id}")
@@ -440,6 +448,11 @@ class TranslationService:
         task_id = task.task_id
         settings = self.task_settings.get(task_id)
         input_path = self.task_inputs.get(task_id)
+        if (not settings or not input_path) and self.storage_root:
+            logger.info("尝试从磁盘恢复任务配置：%s", task_id)
+            self._restore_task_runtime(task_id)
+            settings = self.task_settings.get(task_id)
+            input_path = self.task_inputs.get(task_id)
         if not settings or not input_path:
             raise InternalServerException(
                 message="任务配置缺失",
@@ -961,6 +974,49 @@ class TranslationService:
         except Exception as exc:
             logger.exception(f"初始化任务设置失败：{task_id}, 错误：{exc}")
             raise
+
+    def _restore_task_runtime(self, task_id: str) -> None:
+        """在内存缺失时，从磁盘恢复任务目录、输入文件与设置。"""
+        try:
+            task_dir = self.storage_root / task_id
+            config_path = task_dir / "task_config.json"
+            input_dir = task_dir / "input"
+
+            if not task_dir.exists() or not config_path.exists() or not input_dir.exists():
+                logger.error("任务目录或配置不存在，无法恢复：%s", task_id)
+                return
+
+            self.task_dirs[task_id] = task_dir
+
+            input_files = sorted(input_dir.iterdir())
+            if input_files:
+                self.task_inputs[task_id] = input_files[0]
+
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            self.task_configs[task_id] = config
+
+            # 构造最小 request 结构用于初始化设置
+            from types import SimpleNamespace
+
+            request_stub = SimpleNamespace(
+                target_language=config.get("target_language"),
+                source_language=config.get("source_language"),
+                translation_engine=config.get("translation_engine"),
+                preserve_formatting=config.get("preserve_formatting", True),
+                translate_tables=config.get("translate_tables", False),
+                translate_equations=config.get("translate_equations", True),
+                disable_rapidocr=config.get("disable_rapidocr", False),
+                custom_glossary=config.get("custom_glossary"),
+                webhook_url=config.get("webhook_url"),
+                priority=config.get("priority", 1),
+                timeout=config.get("timeout"),
+                settings_json=config.get("settings_json"),
+            )
+
+            self._initialize_task_settings(task_id, request_stub)
+            logger.info("任务运行时从磁盘恢复完成：%s", task_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("恢复任务运行时失败：%s, 错误：%s", task_id, exc)
 
     async def _verify_task_created(self, task_id: str) -> bool:
         """验证任务是否真正创建成功"""
