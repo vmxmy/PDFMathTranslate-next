@@ -448,9 +448,8 @@ class TranslationService:
         task_id = task.task_id
         settings = self.task_settings.get(task_id)
         input_path = self.task_inputs.get(task_id)
-        if (not settings or not input_path) and self.storage_root:
-            logger.info("尝试从磁盘恢复任务配置：%s", task_id)
-            self._restore_task_runtime(task_id)
+        if not settings or not input_path:
+            await self._wait_for_task_materialized(task_id)
             settings = self.task_settings.get(task_id)
             input_path = self.task_inputs.get(task_id)
         if not settings or not input_path:
@@ -1017,6 +1016,25 @@ class TranslationService:
             logger.info("任务运行时从磁盘恢复完成：%s", task_id)
         except Exception as exc:  # noqa: BLE001
             logger.exception("恢复任务运行时失败：%s, 错误：%s", task_id, exc)
+
+    async def _wait_for_task_materialized(self, task_id: str, timeout: float = 5.0):
+        """
+        等待任务的文件和配置落盘/内存就绪，防止工作进程先于创建流程执行。
+        """
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            settings = self.task_settings.get(task_id)
+            input_path = self.task_inputs.get(task_id)
+            if settings and input_path:
+                return
+            # 尝试从磁盘恢复
+            self._restore_task_runtime(task_id)
+            settings = self.task_settings.get(task_id)
+            input_path = self.task_inputs.get(task_id)
+            if settings and input_path:
+                return
+            await asyncio.sleep(0.1)
+        logger.warning("等待任务资源就绪超时：%s", task_id)
 
     async def _verify_task_created(self, task_id: str) -> bool:
         """验证任务是否真正创建成功"""
