@@ -65,6 +65,7 @@ class TranslationEngine(str, Enum):
     GOOGLE = "google"
     DEEPL = "deepl"
     OPENAI = "openai"
+    OPENAI_COMPATIBLE = "openaicompatible"
     BAIDU = "baidu"
     TENCENT = "tencent"
 

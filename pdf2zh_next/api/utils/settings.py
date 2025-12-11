@@ -15,6 +15,7 @@ ENGINE_TYPE_MAP = {
     "google": "Google",
     "deepl": "DeepL",
     "openai": "OpenAI",
+    "openaicompatible": "OpenAICompatible",
     "tencent": "TencentMechineTranslation",
     "baidu": "Baidu",
 }

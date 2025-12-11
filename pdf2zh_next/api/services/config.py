@@ -234,7 +234,7 @@ class ConfigService:
         """获取当前配置"""
         return ConfigResponse(
             current_config=self.config_data,
-            schema=self.config_schema,
+            config_schema=self.config_schema,
             last_updated=self.last_updated,
             validation_errors=None
         )
@@ -265,7 +265,7 @@ class ConfigService:
             if validation_errors and request.validation_mode == ValidationMode.STRICT:
                 return ConfigResponse(
                     current_config=self.config_data,
-                    schema=self.config_schema,
+                    config_schema=self.config_schema,
                     last_updated=self.last_updated,
                     validation_errors=validation_errors
                 )
@@ -277,7 +277,7 @@ class ConfigService:
             logger.info("配置更新成功")
             return ConfigResponse(
                 current_config=self.config_data,
-                schema=self.config_schema,
+                config_schema=self.config_schema,
                 last_updated=self.last_updated,
                 validation_errors=validation_errors if validation_errors else None
             )

@@ -36,6 +36,7 @@ from ..models.enums import UserRole
 from ..utils import ENGINE_TYPE_MAP
 from ..utils import build_settings_model
 from .config import config_service
+from ..settings import api_settings
 from .task_manager import task_manager
 
 logger = logging.getLogger(__name__)
@@ -44,16 +45,23 @@ logger = logging.getLogger(__name__)
 class TranslationService:
     """翻译服务"""
     def __init__(self):
-        self.supported_formats = {'.pdf'}
-        self.max_file_size = 100 * 1024 * 1024  # 100MB
+        self.supported_formats = set(api_settings.api_supported_formats)
+        self.max_file_size = api_settings.api_max_file_size
+        labels = api_settings.api_engine_labels
         self.engines = {
-            TranslationEngine.GOOGLE: "Google 翻译",
-            TranslationEngine.DEEPL: "DeepL 翻译",
-            TranslationEngine.OPENAI: "OpenAI 翻译",
-            TranslationEngine.BAIDU: "百度翻译",
-            TranslationEngine.TENCENT: "腾讯翻译"
+            TranslationEngine.GOOGLE: labels.get("google", "Google 翻译"),
+            TranslationEngine.DEEPL: labels.get("deepl", "DeepL 翻译"),
+            TranslationEngine.OPENAI: labels.get("openai", "OpenAI 翻译"),
+            TranslationEngine.OPENAI_COMPATIBLE: labels.get("openaicompatible", "OpenAI 兼容"),
+            TranslationEngine.BAIDU: labels.get("baidu", "百度翻译"),
+            TranslationEngine.TENCENT: labels.get("tencent", "腾讯翻译"),
         }
-        self.storage_root = Path("storage/tasks")
+        self.storage_root = api_settings.api_storage_root
+        self.seconds_per_mb = api_settings.api_seconds_per_mb
+        self.estimate_min_seconds = api_settings.api_estimate_min_seconds
+        self.estimate_max_seconds = api_settings.api_estimate_max_seconds
+        self.preview_confidence = api_settings.api_preview_confidence
+        self.artifact_expire_days = api_settings.api_artifact_expire_days
         self.task_dirs: dict[str, Path] = {}
         self.task_configs: dict[str, dict[str, Any]] = {}
         self.file_registry: dict[str, dict[str, Path]] = {}
@@ -68,49 +76,92 @@ class TranslationService:
         user_info: dict[str, Any]
     ) -> TranslationTask:
         """创建翻译任务"""
+        logger.info(f"开始创建翻译任务，用户：{user_info['user_id']}")
+        task = None
         try:
+            # 如果未指定引擎，回退到配置默认
+            if request.translation_engine is None:
+                cfg_default = (
+                    config_service.get_config().current_config.get("translation", {})
+                )
+                request.translation_engine = cfg_default.get(
+                    "default_engine", TranslationEngine.GOOGLE.value
+                )
+
+            logger.info("验证翻译引擎参数")
             if isinstance(request.translation_engine, str):
                 try:
+                    logger.info(f"转换字符串引擎：{request.translation_engine}")
                     request.translation_engine = TranslationEngine(
                         request.translation_engine.lower()
                     )
                 except ValueError as exc:
+                    logger.error(f"不支持的翻译引擎：{request.translation_engine}")
                     raise BadRequestException(
                         message=f"不支持的翻译引擎：{request.translation_engine}",
                         details={"supported_engines": list(self.engines.keys())},
                     ) from exc
 
             # 验证文件
+            logger.info("开始验证文件")
             await self._validate_files(request.files, user_info)
+            logger.info("文件验证成功")
 
             # 验证翻译引擎
+            logger.info(f"验证翻译引擎：{request.translation_engine}")
             if request.translation_engine not in self.engines:
+                logger.error(f"不支持的翻译引擎：{request.translation_engine}")
                 raise BadRequestException(
                     message=f"不支持的翻译引擎：{request.translation_engine}",
                     details={"supported_engines": list(self.engines.keys())}
                 )
+            logger.info("翻译引擎验证成功")
 
             # 估算处理时间
+            logger.info("估算处理时间")
             estimated_duration = await self._estimate_processing_time(request.files)
 
             # 创建任务
+            logger.info("创建任务记录")
             task = await task_manager.create_task(
                 user_id=user_info["user_id"],
                 priority=request.priority,
                 estimated_duration=estimated_duration
             )
+            logger.info(f"任务记录创建成功：{task.task_id}")
 
             # 保存文件
+            logger.info(f"开始保存文件：{task.task_id}")
             await self._save_files(task.task_id, request.files)
+            logger.info(f"文件保存成功：{task.task_id}")
 
             # 保存任务配置
+            logger.info(f"开始保存任务配置：{task.task_id}")
             await self._save_task_config(task.task_id, request)
+            logger.info(f"任务配置保存成功：{task.task_id}")
+
+            # 验证任务是否真正创建成功
+            if not await self._verify_task_created(task.task_id):
+                logger.error(f"任务创建验证失败：{task.task_id}")
+                await self.cleanup_task(task.task_id)
+                raise InternalServerException(
+                    message="任务创建验证失败",
+                    details={"task_id": task.task_id}
+                )
 
             logger.info(f"创建翻译任务成功：{task.task_id}, 用户：{user_info['user_id']}")
             return task
 
         except Exception as exc:
-            logger.error(f"创建翻译任务失败：{exc}")
+            logger.exception(f"创建翻译任务失败：{exc}")
+            if task:
+                logger.info(f"清理失败任务：{task.task_id}")
+                # 清理已创建的任务相关数据
+                try:
+                    await self.cleanup_task(task.task_id)
+                except Exception as cleanup_exc:
+                    logger.error(f"清理任务失败：{task.task_id}, 错误：{cleanup_exc}")
+
             if isinstance(exc, (FileFormatException, BadRequestException)):
                 raise
             raise InternalServerException(
@@ -214,7 +265,7 @@ class TranslationService:
                 source_language=request.source_language or "auto",
                 target_language=request.target_language,
                 engine_used=request.translation_engine,
-                confidence=0.95  # TODO: 从翻译引擎获取置信度
+                confidence=self.preview_confidence,  # TODO: 从翻译引擎获取置信度
             )
 
             logger.info(f"翻译预览成功：用户 {user_info['user_id']}, 引擎 {request.translation_engine}")
@@ -284,11 +335,9 @@ class TranslationService:
             total_size += size
 
         # 基于文件大小估算处理时间（粗略估算）
-        # 假设每 MB 需要 30 秒处理时间
-        estimated_seconds = int((total_size / (1024 * 1024)) * 30)
+        estimated_seconds = int((total_size / (1024 * 1024)) * self.seconds_per_mb)
 
-        # 最小 30 秒，最大 2 小时
-        return max(30, min(estimated_seconds, 7200))
+        return max(self.estimate_min_seconds, min(estimated_seconds, self.estimate_max_seconds))
 
     async def _save_files(self, task_id: str, files: list[UploadFile]):
         """保存上传的源文件到任务目录"""
@@ -318,29 +367,45 @@ class TranslationService:
 
     async def _save_task_config(self, task_id: str, request: TranslationRequest):
         """保存任务配置"""
-        task_dir = self.task_dirs.get(task_id)
-        if not task_dir:
-            task_dir = self.storage_root / task_id
-            task_dir.mkdir(parents=True, exist_ok=True)
-            self.task_dirs[task_id] = task_dir
+        logger.info(f"开始保存任务配置：{task_id}")
 
-        config = {
-            "target_language": request.target_language,
-            "source_language": request.source_language,
-            "translation_engine": request.translation_engine,
-            "preserve_formatting": request.preserve_formatting,
-            "translate_tables": request.translate_tables,
-            "translate_equations": request.translate_equations,
-            "custom_glossary": request.custom_glossary,
-            "webhook_url": request.webhook_url,
-            "priority": request.priority,
-            "timeout": request.timeout
-        }
-        config_path = task_dir / "task_config.json"
-        config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2))
-        self.task_configs[task_id] = config
-        logger.info(f"保存任务配置：{task_id}")
-        self._initialize_task_settings(task_id, request)
+        try:
+            task_dir = self.task_dirs.get(task_id)
+            if not task_dir:
+                logger.info(f"创建任务目录：{task_id}")
+                task_dir = self.storage_root / task_id
+                task_dir.mkdir(parents=True, exist_ok=True)
+                self.task_dirs[task_id] = task_dir
+            else:
+                logger.info(f"使用已存在的任务目录：{task_dir}")
+
+            logger.info(f"构建配置对象：{task_id}")
+            config = {
+                "target_language": request.target_language,
+                "source_language": request.source_language,
+                "translation_engine": request.translation_engine,
+                "preserve_formatting": request.preserve_formatting,
+                "translate_tables": request.translate_tables,
+                "translate_equations": request.translate_equations,
+                "custom_glossary": request.custom_glossary,
+                "webhook_url": request.webhook_url,
+                "priority": request.priority,
+                "timeout": request.timeout
+            }
+
+            logger.info(f"写入配置文件：{task_id}")
+            config_path = task_dir / "task_config.json"
+            config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2))
+            self.task_configs[task_id] = config
+            logger.info(f"保存任务配置成功：{task_id}")
+
+            logger.info(f"开始初始化任务设置：{task_id}")
+            self._initialize_task_settings(task_id, request)
+            logger.info(f"任务配置和设置初始化完成：{task_id}")
+
+        except Exception as exc:
+            logger.exception(f"保存任务配置失败：{task_id}, 错误：{exc}")
+            raise
 
     async def _translate_text(
         self,
@@ -388,6 +453,7 @@ class TranslationService:
         settings.basic.input_files = set()
 
         translate_result = None
+        unknown_event_logged = 0
         try:
             await task_manager.update_task_progress(
                 task_id, TranslationStage.PARSING, 15.0, "解析 PDF"
@@ -395,8 +461,55 @@ class TranslationService:
             await task_manager.update_task_progress(
                 task_id, TranslationStage.TRANSLATING, 60.0, "翻译进行中"
             )
+            last_progress_details: dict[str, Any] | None = None
             async for event in do_translate_async_stream(settings, input_path):
                 event_type = event.get("type")
+                progress_candidate = (
+                    event_type in {"progress", "progress_start", "stage_summary"}
+                    or "page" in event
+                    or "current_page" in event
+                    or "total_pages" in event
+                    or "pages_total" in event
+                    or "overall_progress" in event
+                    or "stage_progress" in event
+                )
+                if progress_candidate:
+                    progress_value, progress_details = self._extract_progress_from_event(event)
+                    if progress_value is not None or progress_details:
+                        logger.info(
+                            "翻译进度：task=%s | stage=%s | progress=%s | page=%s/%s",
+                            task_id,
+                            (progress_details or {}).get("stage", "translating"),
+                            f"{progress_value:.2f}" if progress_value is not None else "n/a",
+                            (progress_details or {}).get("page"),
+                            (progress_details or {}).get("total_pages"),
+                        )
+                        await task_manager.update_task_progress(
+                            task_id,
+                            TranslationStage.TRANSLATING,
+                            progress_value if progress_value is not None else 60.0,
+                            "翻译进行中",
+                            details=progress_details or None,
+                        )
+                        last_progress_details = progress_details
+                    continue
+                if event_type == "log":
+                    logger.log(
+                        getattr(logging, event.get("level", "INFO"), logging.INFO),
+                        "翻译日志：task=%s | message=%s",
+                        task_id,
+                        event.get("message"),
+                    )
+                    continue
+                if unknown_event_logged < 5:
+                    logger.info(
+                        "未识别的翻译事件：task=%s | type=%s | keys=%s | sample=%s",
+                        task_id,
+                        event_type,
+                        list(event.keys()),
+                        {k: event[k] for k in list(event.keys())[:5]},
+                    )
+                    unknown_event_logged += 1
                 if event_type == "error":
                     error_message = event.get("error", "Unknown error")
                     raise TranslationEngineException(
@@ -469,7 +582,7 @@ class TranslationService:
                     page_count=getattr(translate_result, "total_pages", 0) or 0,
                     download_url=
                     f"/v1/translations/{task_id}/files/{file_id}/download",
-                    expires_at=now + timedelta(days=7),
+                    expires_at=now + timedelta(days=self.artifact_expire_days),
                 )
             )
 
@@ -530,7 +643,7 @@ class TranslationService:
                     page_count=0,
                     download_url=
                     f"/v1/translations/{task_id}/files/{zip_file_id}/download",
-                    expires_at=now + timedelta(days=7),
+                    expires_at=now + timedelta(days=self.artifact_expire_days),
                 ),
             )
 
@@ -676,98 +789,211 @@ class TranslationService:
             download_links_valid=download_links_valid,
         )
 
+    def _extract_progress_from_event(
+        self, event: dict[str, Any]
+    ) -> tuple[float | None, dict[str, Any] | None]:
+        """从 BabelDOC 事件中提取进度与页码信息"""
+        page = event.get("page") or event.get("current_page")
+        total_pages = event.get("total_pages") or event.get("pages_total")
+        percent = (
+            event.get("progress")
+            or event.get("percentage")
+            or event.get("percent")
+            or event.get("progress_percent")
+            or event.get("overall_progress")
+            or event.get("stage_progress")
+        )
+
+        if percent is None and page is not None and total_pages:
+            try:
+                percent = float(page) / float(total_pages) * 100.0
+            except Exception:
+                percent = None
+
+        details: dict[str, Any] = {}
+        if page is not None:
+            details["page"] = page
+        if total_pages is not None:
+            details["total_pages"] = total_pages
+        stage = event.get("stage") or event.get("status")
+        if stage:
+            details["stage"] = stage
+        if "stage_current" in event:
+            details["stage_current"] = event.get("stage_current")
+        if "stage_total" in event:
+            details["stage_total"] = event.get("stage_total")
+        if "part_index" in event:
+            details["part_index"] = event.get("part_index")
+        if "total_parts" in event:
+            details["total_parts"] = event.get("total_parts")
+
+        return percent, details or None
+
     def _initialize_task_settings(
         self, task_id: str, request: TranslationRequest
     ) -> None:
-        output_dir = self.task_dirs.get(task_id, self.storage_root / task_id) / "output"
-        cfg = config_service.get_config().current_config
-        translation_cfg = cfg.get("translation", {})
+        logger.info(f"开始初始化任务设置：{task_id}")
 
+        try:
+            output_dir = self.task_dirs.get(task_id, self.storage_root / task_id) / "output"
+            logger.info(f"输出目录：{output_dir}")
 
-        engine_member = request.translation_engine
-        if isinstance(engine_member, TranslationEngine):
-            engine_key_value = engine_member.value
-        elif isinstance(engine_member, str):
-            try:
-                engine_key_value = TranslationEngine(engine_member.lower()).value
-            except ValueError as exc:
-                raise BadRequestException(
-                    message=f"不支持的翻译引擎：{engine_member}",
-                    details={"supported_engines": list(self.engines.keys())},
-                ) from exc
-        else:
-            raise BadRequestException(
-                message="翻译引擎参数无效",
-                details={"type": str(type(engine_member))},
-            )
+            cfg = config_service.get_config().current_config
+            translation_cfg = cfg.get("translation", {})
+            logger.info(f"获取翻译配置成功：{task_id}")
 
-        logger.debug(
-            "Initializing settings for %s with engine %s", task_id, engine_key_value
-        )
+            logger.info(f"构建翻译覆盖配置：{task_id}")
+            translation_overrides: dict[str, Any] = {
+                "translation": {
+                    "lang_out": request.target_language,
+                },
+                "pdf": {
+                    "translate_table_text": request.translate_tables,
+                    "disable_rapidocr": request.disable_rapidocr,
+                },
+            }
+            if request.source_language:
+                translation_overrides["translation"]["lang_in"] = request.source_language
+            if not request.preserve_formatting:
+                translation_overrides.setdefault("pdf", {})[
+                    "disable_rich_text_translate"
+                ] = True
+            if not request.translate_equations:
+                translation_overrides.setdefault("pdf", {})[
+                    "no_remove_non_formula_lines"
+                ] = True
 
-        translation_overrides: dict[str, Any] = {
-            "translation": {
-                "lang_out": request.target_language,
-            },
-            "pdf": {
-                "translate_table_text": request.translate_tables,
-                "disable_rapidocr": request.disable_rapidocr,
-            },
-        }
-        if request.source_language:
-            translation_overrides["translation"]["lang_in"] = request.source_language
-        if not request.preserve_formatting:
-            translation_overrides.setdefault("pdf", {})[
-                "disable_rich_text_translate"
-            ] = True
-        if not request.translate_equations:
-            translation_overrides.setdefault("pdf", {})[
-                "no_remove_non_formula_lines"
-            ] = True
+            logger.info(f"处理额外设置：{task_id}")
+            extra_overrides: dict[str, Any] | None = None
+            if request.settings_json:
+                try:
+                    extra_overrides = json.loads(request.settings_json)
+                    logger.info(f"解析额外设置成功：{task_id}")
+                except json.JSONDecodeError as exc:
+                    logger.error(f"settings_json JSON解析失败：{task_id}, 错误：{exc}")
+                    raise BadRequestException(
+                        message="settings_json 不是合法的 JSON",
+                        details={"error": str(exc)},
+                    ) from exc
+                if extra_overrides is not None and not isinstance(extra_overrides, dict):
+                    logger.error(f"settings_json 不是对象类型：{task_id}")
+                    raise BadRequestException(
+                        message="settings_json 必须是 JSON 对象",
+                    )
 
-        extra_overrides: dict[str, Any] | None = None
-        if request.settings_json:
-            try:
-                extra_overrides = json.loads(request.settings_json)
-            except json.JSONDecodeError as exc:
-                raise BadRequestException(
-                    message="settings_json 不是合法的 JSON",
-                    details={"error": str(exc)},
-                ) from exc
-            if extra_overrides is not None and not isinstance(extra_overrides, dict):
-                raise BadRequestException(
-                    message="settings_json 必须是 JSON 对象",
+            # 如果 settings_json 指定了 translate_engine_type，则优先使用该类型
+            override_engine = None
+            if extra_overrides:
+                override_engine = (
+                    extra_overrides.get("translate_engine_settings", {})
+                    .get("translate_engine_type")
                 )
 
-        engine_key = engine_key_value.lower()
-        engine_type = ENGINE_TYPE_MAP.get(engine_key, "Google")
-        engine_config = translation_cfg.get("engines", {}).get(engine_key, {})
-        engine_payload: dict[str, Any] = {
-            "translate_engine_type": engine_type,
-        }
-        for field, cfg_key in (
-            ("openai_api_key", "api_key"),
-            ("openai_model", "model"),
-            ("deepl_auth_key", "api_key"),
-        ):
-            if engine_type == "OpenAI" and field.startswith("openai"):
-                value = engine_config.get(cfg_key)
-                if value:
-                    engine_payload[field] = value
-            if engine_type == "DeepL" and field.startswith("deepl"):
-                value = engine_config.get(cfg_key)
-                if value:
-                    engine_payload[field] = value
+            default_engine = translation_cfg.get("default_engine", "google")
+            logger.info(
+                f"解析翻译引擎：{task_id}, 请求参数={request.translation_engine}, 覆盖={override_engine}, 默认={default_engine}"
+            )
+            engine_member = override_engine or request.translation_engine or default_engine
+            if isinstance(engine_member, TranslationEngine):
+                engine_key_value = engine_member.value
+                logger.info(f"使用枚举引擎类型：{engine_key_value}")
+            elif isinstance(engine_member, str):
+                normalized_engine = engine_member.lower()
+                # 兼容 OpenAICompatible 之类的自定义值
+                if normalized_engine in ENGINE_TYPE_MAP:
+                    engine_key_value = normalized_engine
+                    logger.info(f"使用字符串引擎类型：{engine_key_value}")
+                else:
+                    try:
+                        engine_key_value = TranslationEngine(normalized_engine).value
+                        logger.info(f"转换字符串引擎类型：{engine_member} -> {engine_key_value}")
+                    except ValueError as exc:
+                        logger.error(f"不支持的翻译引擎：{engine_member}, 任务：{task_id}")
+                        raise BadRequestException(
+                            message=f"不支持的翻译引擎：{engine_member}",
+                            details={"supported_engines": list(self.engines.keys())},
+                        ) from exc
+            else:
+                logger.error(f"翻译引擎参数类型无效：{type(engine_member)}, 任务：{task_id}")
+                raise BadRequestException(
+                    message="翻译引擎参数无效",
+                    details={"type": str(type(engine_member))},
+                )
 
-        cli_model = build_settings_model(
-            translation_overrides,
-            engine_payload,
-            extra_overrides,
-        )
-        settings = cli_model.to_settings_model()
-        settings.translation.output = str(output_dir)
-        settings.basic.input_files = set()
-        self.task_settings[task_id] = settings
+            logger.info(
+                "初始化设置：任务=%s, 引擎=%s", task_id, engine_key_value
+            )
+
+            logger.info(f"配置引擎参数：{task_id}")
+            engine_key = engine_key_value.lower()
+            engine_type = ENGINE_TYPE_MAP.get(engine_key, "Google")
+            engine_config = translation_cfg.get("engines", {}).get(engine_key, {})
+            engine_payload: dict[str, Any] = {
+                "translate_engine_type": engine_type,
+            }
+            for field, cfg_key in (
+                ("openai_api_key", "api_key"),
+                ("openai_model", "model"),
+                ("deepl_auth_key", "api_key"),
+            ):
+                if engine_type == "OpenAI" and field.startswith("openai"):
+                    value = engine_config.get(cfg_key)
+                    if value:
+                        engine_payload[field] = value
+                if engine_type == "DeepL" and field.startswith("deepl"):
+                    value = engine_config.get(cfg_key)
+                    if value:
+                        engine_payload[field] = value
+
+            logger.info(f"构建设置模型：{task_id}")
+            cli_model = build_settings_model(
+                translation_overrides,
+                engine_payload,
+                extra_overrides,
+            )
+            settings = cli_model.to_settings_model()
+            settings.translation.output = str(output_dir)
+            settings.basic.input_files = set()
+            self.task_settings[task_id] = settings
+            logger.info(f"任务设置初始化完成：{task_id}")
+
+        except Exception as exc:
+            logger.exception(f"初始化任务设置失败：{task_id}, 错误：{exc}")
+            raise
+
+    async def _verify_task_created(self, task_id: str) -> bool:
+        """验证任务是否真正创建成功"""
+        try:
+            # 检查任务目录是否存在
+            task_dir = self.task_dirs.get(task_id, self.storage_root / task_id)
+            if not task_dir.exists():
+                logger.error(f"任务目录不存在：{task_dir}")
+                return False
+
+            # 检查配置文件是否存在
+            config_file = task_dir / "task_config.json"
+            if not config_file.exists():
+                logger.error(f"任务配置文件不存在：{config_file}")
+                return False
+
+            # 检查输入文件是否存在
+            input_file = self.task_inputs.get(task_id)
+            if not input_file or not input_file.exists():
+                logger.error(f"任务输入文件不存在：{input_file}")
+                return False
+
+            # 检查任务设置是否存在
+            settings = self.task_settings.get(task_id)
+            if not settings:
+                logger.error(f"任务设置不存在：{task_id}")
+                return False
+
+            logger.info(f"任务创建验证成功：{task_id}")
+            return True
+
+        except Exception as exc:
+            logger.exception(f"任务创建验证异常：{task_id}, 错误：{exc}")
+            return False
 
 
 # 全局翻译服务实例

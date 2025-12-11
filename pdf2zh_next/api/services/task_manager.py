@@ -23,6 +23,7 @@ from ..models import TranslationProgress
 from ..models import TranslationResult
 from ..models import TranslationStage
 from ..models import TranslationTask
+from ..settings import api_settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,10 @@ class TaskManager:
         self.tasks: dict[str, TranslationTask] = {}
         self.task_queue: asyncio.Queue = asyncio.Queue()
         self.worker_tasks: list[asyncio.Task] = []
-        self.max_concurrent_tasks = 10
-        self.task_timeout = 3600  # 1 小时
-        self.cleanup_interval = 300  # 5 分钟
+        self.max_concurrent_tasks = api_settings.api_max_concurrency
+        self.task_timeout = api_settings.api_task_timeout  # 1 小时
+        self.cleanup_interval = api_settings.api_cleanup_interval  # 5 分钟
+        self.task_retention_hours = api_settings.api_task_retention_hours
         self.translation_service: TranslationService | None = None
 
     async def initialize(self):
@@ -521,7 +523,7 @@ class TaskManager:
     async def _cleanup_old_tasks(self):
         """清理旧任务"""
         now = datetime.now()
-        cutoff_time = now - timedelta(hours=24)  # 24 小时前的任务
+        cutoff_time = now - timedelta(hours=self.task_retention_hours)
 
         tasks_to_remove = []
         for task_id, task in self.tasks.items():

@@ -70,7 +70,7 @@ class OpenAITranslator(BaseTranslator):
 
     @retry(
         retry=retry_if_exception_type(openai.RateLimitError),
-        stop=stop_after_attempt(100),
+        stop=stop_after_attempt(8),  # 合理的限流重试上限
         wait=wait_exponential(multiplier=1, min=1, max=15),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
@@ -101,7 +101,7 @@ class OpenAITranslator(BaseTranslator):
 
     @retry(
         retry=retry_if_exception_type(openai.RateLimitError),
-        stop=stop_after_attempt(100),
+        stop=stop_after_attempt(8),  # 合理的限流重试上限
         wait=wait_exponential(multiplier=1, min=1, max=15),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )

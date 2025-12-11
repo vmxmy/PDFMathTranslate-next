@@ -20,8 +20,8 @@ class TranslationRequest(BaseSchema):
     source_language: str | None = Field(
         None, description="源语言代码（可选，自动检测）"
     )
-    translation_engine: TranslationEngine = Field(
-        TranslationEngine.GOOGLE, description="翻译引擎"
+    translation_engine: TranslationEngine | str | None = Field(
+        None, description="翻译引擎（可选，缺省走配置默认）"
     )
     preserve_formatting: bool = Field(True, description="是否保持格式")
     translate_tables: bool = Field(True, description="是否翻译表格")

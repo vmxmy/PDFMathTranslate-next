@@ -122,7 +122,7 @@ uvicorn pdf2zh_next.api.app:app --host 0.0.0.0 --port 8000
 
   ```bash
   curl -X POST \
-    -H "Authorization: Bearer test-key-1" \
+    -H "Authorization: Bearer <your-user-api-key>" \
     -F "files=@/path/to/paper.pdf" \
     -F "target_language=zh" \
     http://localhost:8000/v1/translations/
@@ -136,13 +136,18 @@ uvicorn pdf2zh_next.api.app:app --host 0.0.0.0 --port 8000
 
   ```bash
   curl -X POST \
-    -H "Authorization: Bearer admin-key-1" \
+    -H "Authorization: Bearer <your-admin-api-key>" \
     http://localhost:8000/v1/translations/{task_id}/clean
   ```
 
 Environment variables:
 
-- `PDF2ZH_API_MAX_CONCURRENCY`: maximum concurrent translations (default `2`).
+- 翻译与存储：`PDF2ZH_API_SUPPORTED_FORMATS`（默认 `.pdf`），`PDF2ZH_API_MAX_FILE_SIZE`（默认 104857600），`PDF2ZH_API_STORAGE_ROOT`，`PDF2ZH_API_SECONDS_PER_MB` / `PDF2ZH_API_ESTIMATE_MIN_SECONDS` / `PDF2ZH_API_ESTIMATE_MAX_SECONDS`，`PDF2ZH_API_PREVIEW_CONFIDENCE`，`PDF2ZH_API_ARTIFACT_EXPIRE_DAYS`。
+- 并发与生命周期：`PDF2ZH_API_MAX_CONCURRENCY`（默认 10），`PDF2ZH_API_TASK_TIMEOUT`（默认 3600 秒），`PDF2ZH_API_CLEANUP_INTERVAL`（默认 300 秒），`PDF2ZH_API_TASK_RETENTION_HOURS`（默认 24 小时）。
+- 认证模板：`PDF2ZH_API_USER_*` / `PDF2ZH_API_ADMIN_*` 用于权限、配额、文件大小、允许引擎等默认值（详见 `.env.example`）。
+- `PDF2ZH_API_USER_KEYS`: 逗号分隔的普通用户密钥列表（必须配置，无内置默认；支持 `.env`）。
+- `PDF2ZH_API_ADMIN_KEYS`: 逗号分隔的管理员密钥列表（必须配置，无内置默认；支持 `.env`）。
+- `PDF2ZH_API_MAX_CONCURRENCY`: maximum concurrent translations (default `10`).
 - `PDF2ZH_API_QUEUE_MAXSIZE`: optional queue length limit (default unlimited).
 - `PDF2ZH_API_EXEC_TIMEOUT`: seconds to wait when acquiring a worker slot.
 - `PDF2ZH_API_WORKERS`: number of background queue workers (defaults to `PDF2ZH_API_MAX_CONCURRENCY`).

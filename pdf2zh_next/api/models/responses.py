@@ -137,7 +137,7 @@ class OfflineAssetStatus(BaseSchema):
 class ConfigResponse(BaseSchema):
     """配置响应模型"""
     current_config: dict[str, Any] = Field(description="当前配置")
-    schema: dict[str, Any] = Field(description="配置 schema")
+    config_schema: dict[str, Any] = Field(description="配置 schema")
     last_updated: datetime = Field(description="最后更新时间")
     validation_errors: list[str] | None = Field(None, description="验证错误")
 

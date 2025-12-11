@@ -41,7 +41,7 @@ async def create_translation(
     files: Annotated[ list[UploadFile], File(..., description="要翻译的 PDF 文件列表") ],
     target_language: Annotated[str, Form(description="目标语言代码")] = "zh",
     source_language: Annotated[str | None, Form(description="源语言代码（可选，自动检测）")] = None,
-    translation_engine: Annotated[str, Form(description="翻译引擎")] = "google",
+    translation_engine: Annotated[str | None, Form(description="翻译引擎（可选）")] = None,
     preserve_formatting: Annotated[bool, Form(description="是否保持格式")] = True,
     translate_tables: Annotated[bool, Form(description="是否翻译表格")] = True,
     translate_equations: Annotated[bool, Form(description="是否处理数学公式")] = True,
@@ -49,6 +49,7 @@ async def create_translation(
     webhook_url: Annotated[str | None, Form(description="完成通知的 webhook URL")] = None,
     priority: Annotated[int, Form(ge=1, le=5, description="任务优先级（1-5，5 最高）")] = 1,
     timeout: Annotated[int | None, Form(ge=60, description="超时时间（秒）")] = None,
+    settings_json: Annotated[str | None, Form(description="高级设置 JSON（如 translate_engine_settings）")] = None,
     *,
     current_user: CurrentUser,
 ):
@@ -79,6 +80,7 @@ async def create_translation(
             webhook_url=webhook_url,
             priority=priority,
             timeout=timeout,
+            settings_json=settings_json,
         )
 
         # 创建翻译任务

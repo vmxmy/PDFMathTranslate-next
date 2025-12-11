@@ -1,5 +1,6 @@
 """依赖注入模块"""
 
+import os
 import logging
 import uuid
 from typing import Annotated
@@ -15,6 +16,7 @@ from .exceptions import ForbiddenException
 from .exceptions import UnauthorizedException
 from .models import UserInfo
 from .models import UserRole
+from .settings import api_settings
 
 logger = logging.getLogger(__name__)
 
@@ -45,32 +47,70 @@ class AuthService:
     """认证服务"""
 
     def __init__(self):
-        # TODO: 从配置文件或数据库加载 API 密钥
-        self.api_keys = {
-            "test-key-1": {
-                "user_id": "user-123",
-                "role": UserRole.USER,
-                "permissions": ["translate", "read_config"],
-                "rate_limit": 60,  # 每分钟 60 次
-                "max_file_size": 100 * 1024 * 1024,  # 100MB
-                "max_concurrent_tasks": 3,
-                "allowed_engines": ["google", "deepl", "baidu"],
-                "webhook_support": True,
-                "quota_used": 0,
-                "quota_limit": 1000,
-            },
-            "admin-key-1": {
-                "user_id": "admin-456",
-                "role": UserRole.ADMIN,
-                "permissions": ["*"],  # 所有权限
-                "rate_limit": 1000,  # 每分钟 1000 次
-                "max_file_size": 500 * 1024 * 1024,  # 500MB
-                "max_concurrent_tasks": 20,
-                "allowed_engines": ["google", "deepl", "openai", "baidu", "tencent"],
-                "webhook_support": True,
-                "quota_used": 0,
-                "quota_limit": 10000,
-            },
+        self.api_keys = self._load_api_keys_from_env()
+
+    def _load_api_keys_from_env(self) -> dict[str, dict[str, Any]]:
+        """从环境变量加载 API 密钥，支持 .env 配置"""
+        user_keys = self._parse_key_list("PDF2ZH_API_USER_KEYS")
+        admin_keys = self._parse_key_list("PDF2ZH_API_ADMIN_KEYS")
+
+        api_keys: dict[str, dict[str, Any]] = {}
+        for key in user_keys:
+            api_keys[key] = self._build_user_key_config()
+        for key in admin_keys:
+            api_keys[key] = self._build_admin_key_config()
+
+        if not user_keys and not admin_keys:
+            logger.warning(
+                "未配置任何 API 密钥，所有请求将被拒绝。请通过 PDF2ZH_API_USER_KEYS 或 PDF2ZH_API_ADMIN_KEYS 设置密钥。"
+            )
+        else:
+            logger.info(
+                "API 密钥配置已加载：用户密钥 %d 个，管理员密钥 %d 个",
+                len(user_keys),
+                len(admin_keys),
+            )
+        return api_keys
+
+    def _parse_key_list(self, env_name: str) -> list[str]:
+        """解析环境变量中的逗号分隔密钥列表"""
+        raw_value = os.getenv(env_name)
+        if raw_value is None or not raw_value.strip():
+            return []
+
+        keys = [item.strip() for item in raw_value.split(",")]
+        # 过滤空字符串，避免手误导致空密钥
+        filtered_keys = [key for key in keys if key]
+        return filtered_keys
+
+    def _build_user_key_config(self) -> dict[str, Any]:
+        """构建普通用户密钥配置"""
+        return {
+            "user_id": api_settings.api_user_id,
+            "role": UserRole.USER,
+            "permissions": api_settings.api_user_permissions,
+            "rate_limit": api_settings.api_user_rate_limit,
+            "max_file_size": api_settings.api_user_max_file_size,
+            "max_concurrent_tasks": api_settings.api_user_max_concurrent_tasks,
+            "allowed_engines": api_settings.api_user_allowed_engines,
+            "webhook_support": api_settings.api_user_webhook_support,
+            "quota_used": 0,
+            "quota_limit": api_settings.api_user_quota_limit,
+        }
+
+    def _build_admin_key_config(self) -> dict[str, Any]:
+        """构建管理员密钥配置"""
+        return {
+            "user_id": api_settings.api_admin_id,
+            "role": UserRole.ADMIN,
+            "permissions": api_settings.api_admin_permissions,
+            "rate_limit": api_settings.api_admin_rate_limit,
+            "max_file_size": api_settings.api_admin_max_file_size,
+            "max_concurrent_tasks": api_settings.api_admin_max_concurrent_tasks,
+            "allowed_engines": api_settings.api_admin_allowed_engines,
+            "webhook_support": api_settings.api_admin_webhook_support,
+            "quota_used": 0,
+            "quota_limit": api_settings.api_admin_quota_limit,
         }
 
     async def verify_api_key(
@@ -219,4 +259,3 @@ async def get_request_info(request: Request) -> dict[str, Any]:
         "client_host": request.client.host if request.client else None,
         "request_id": getattr(request.state, "request_id", "unknown"),
     }
-
