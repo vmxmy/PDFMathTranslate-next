@@ -55,6 +55,7 @@ class TranslationService:
             TranslationEngine.OPENAI_COMPATIBLE: labels.get("openaicompatible", "OpenAI 兼容"),
             TranslationEngine.BAIDU: labels.get("baidu", "百度翻译"),
             TranslationEngine.TENCENT: labels.get("tencent", "腾讯翻译"),
+            TranslationEngine.SILICONFLOWFREE: labels.get("siliconflowfree", "SiliconFlow Free"),
         }
         self.storage_root = api_settings.api_storage_root
         self.seconds_per_mb = api_settings.api_seconds_per_mb

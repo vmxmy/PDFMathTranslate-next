@@ -3,8 +3,6 @@ import logging
 import logging.handlers
 import multiprocessing
 import multiprocessing.connection
-import multiprocessing.queues
-import queue
 import threading
 import traceback
 from collections.abc import AsyncGenerator
@@ -146,6 +144,255 @@ class LLMOnlyDocLayoutModel(DocLayoutModel):
 LLM_ONLY_DOC_LAYOUT_MODEL = LLMOnlyDocLayoutModel()
 
 
+class _ProgressLogHandler(logging.Handler):
+    """将子进程日志转成事件回推上层。"""
+
+    def __init__(self, cb: asynchronize.AsyncCallback):
+        super().__init__()
+        self._cb = cb
+
+    def emit(self, record: logging.LogRecord) -> None:
+        log_entry = {
+            "type": "log",
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=timezone.utc
+            ).isoformat(),
+        }
+        try:
+            self._cb.step_callback(log_entry)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).debug(
+                f"Failed to forward log event: {exc}"
+            )
+
+
+class _ForwardLogHandler(logging.Handler):
+    """把子进程日志交给主进程现有 logger 处理，避免重复配置。"""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        logging.getLogger(record.name).handle(record)
+
+
+class TranslateProcessManager:
+    """封装翻译子进程、IPC 与日志转发的生命周期管理。"""
+
+    def __init__(self, settings: SettingsModel, file: Path, timeout: int):
+        self.settings = settings
+        self.file = file
+        self.cb = asynchronize.AsyncCallback(timeout=timeout)
+
+        self.pipe_progress_recv, self.pipe_progress_send = multiprocessing.Pipe(
+            duplex=False
+        )
+        self.pipe_cancel_recv, self.pipe_cancel_send = multiprocessing.Pipe(
+            duplex=False
+        )
+        self.logger_queue = multiprocessing.Queue()
+        self.cancel_event = threading.Event()
+
+        self.recv_thread: threading.Thread | None = None
+        self.queue_listener: logging.handlers.QueueListener | None = None
+        self.translate_process: multiprocessing.Process | None = None
+
+    def start(self) -> None:
+        self._start_recv_thread()
+        self._start_queue_listener()
+        self._start_translate_process()
+
+    def _start_translate_process(self) -> None:
+        self.translate_process = multiprocessing.Process(
+            target=_translate_wrapper,
+            args=(
+                self.settings,
+                self.file,
+                self.pipe_progress_send,
+                self.pipe_cancel_recv,
+                self.logger_queue,
+            ),
+        )
+        self.translate_process.start()
+
+    def _start_queue_listener(self) -> None:
+        progress_handler = _ProgressLogHandler(self.cb)
+        forward_handler = _ForwardLogHandler()
+        self.queue_listener = logging.handlers.QueueListener(
+            self.logger_queue,
+            progress_handler,
+            forward_handler,
+        )
+        self.queue_listener.start()
+
+    def _start_recv_thread(self) -> None:
+        def recv_worker():
+            while True:
+                if self.cancel_event.is_set():
+                    break
+                try:
+                    event = self.pipe_progress_recv.recv()
+                    if event is None:
+                        logger.debug("recv none event")
+                        self.cb.finished_callback_without_args()
+                        break
+
+                    if isinstance(event, TranslationError):
+                        logger.error(f"Received error from subprocess: {event}")
+                        self.cb.error_callback(event)
+                        break
+                    if isinstance(event, dict):
+                        self.cb.step_callback(event)
+                        continue
+
+                    logger.warning(
+                        f"Unexpected message type from subprocess: {type(event)}"
+                    )
+                    error = IPCError(f"Unexpected message type: {type(event)}")
+                    self.cb.error_callback(error)
+                    break
+                except EOFError:
+                    logger.debug("recv eof error")
+                    error = IPCError("Connection to subprocess was closed unexpectedly")
+                    self.cb.error_callback(error)
+                    break
+                except Exception as e:  # noqa: BLE001
+                    if not self.cancel_event.is_set():
+                        logger.error(f"Error receiving event: {e}")
+                    error = IPCError(f"IPC error: {e}", details=str(e))
+                    self.cb.error_callback(error)
+                    break
+
+        self.recv_thread = threading.Thread(target=recv_worker, daemon=True)
+        self.recv_thread.start()
+
+    async def iter_events(self):
+        """异步迭代子进程事件，负责清理资源与错误上抛。"""
+        completed_successfully = False
+        cancel_flag = False
+        try:
+            async for event in self.cb:
+                if self.cb.has_error():
+                    break
+                payload = event.args[0]
+                yield payload
+                try:
+                    if isinstance(payload, dict) and payload.get("type") == "finish":
+                        completed_successfully = True
+                        break
+                except Exception:  # noqa: BLE001
+                    pass
+        except asyncio.CancelledError:
+            cancel_flag = True
+            logger.info("Process Translation cancelled")
+            raise
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received in main process")
+        finally:
+            crash_error = self._cleanup(completed_successfully, cancel_flag)
+            if crash_error:
+                raise crash_error
+
+    def _cleanup(self, completed_successfully: bool, cancel_flag: bool):
+        logger.debug("send cancel message")
+        if not completed_successfully:
+            try:
+                self.pipe_cancel_send.send(True)
+            except (OSError, BrokenPipeError) as e:
+                logger.debug(f"Failed to send cancel message: {e}")
+
+        logger.debug("close pipe cancel message")
+        try:
+            self.pipe_cancel_send.close()
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Failed to close pipe_cancel_message_send: {e}")
+
+        try:
+            self.pipe_progress_send.send(None)
+        except (OSError, BrokenPipeError) as e:
+            logger.debug(f"Failed to send None to pipe_progress_send: {e}")
+
+        if not completed_successfully:
+            logger.debug("set cancel event")
+            self.cancel_event.set()
+
+        # 关闭接收端管道以中断 recv_thread 中的阻塞接收
+        try:
+            self.pipe_progress_recv.close()
+            logger.debug("closed pipe_progress_recv")
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Failed to close pipe_progress_recv: {e}")
+
+        # 终止子进程，使用超时防止卡住
+        join_timeout = 10
+        if completed_successfully and not cancel_flag:
+            join_timeout = 30
+        if self.translate_process:
+            self.translate_process.join(timeout=join_timeout)
+            logger.debug("join translate process")
+            if self.translate_process.is_alive():
+                if completed_successfully and not cancel_flag:
+                    logger.info(
+                        "Translate process still running after completion, allowing extra time"
+                    )
+                    self.translate_process.join(timeout=30)
+                if self.translate_process.is_alive():
+                    logger.info("Translate process did not finish in time, terminate it")
+                    self.translate_process.terminate()
+                    self.translate_process.join(timeout=5)
+                if self.translate_process.is_alive():
+                    logger.info("Translate process did not finish in time, killing it")
+                    try:
+                        self.translate_process.kill()
+                        self.translate_process.join(timeout=2)
+                        logger.info("Translate process killed")
+                    except Exception as e:  # noqa: BLE001
+                        logger.exception(f"Error killing translate process: {e}")
+
+        # 等待接收线程，使用超时防止卡住
+        logger.debug("join recv thread")
+        if self.recv_thread:
+            self.recv_thread.join(timeout=2)
+            if self.recv_thread.is_alive():
+                logger.warning("Recv thread did not finish in time")
+
+        try:
+            self.logger_queue.put(None)
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Failed to send sentinel to logger_queue: {e}")
+
+        if self.queue_listener:
+            try:
+                self.queue_listener.stop()
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Failed to stop queue listener: {e}")
+
+        try:
+            self.logger_queue.close()
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Failed to close logger_queue: {e}")
+
+        logger.debug(
+            "translate process exit code: %s",
+            self.translate_process.exitcode if self.translate_process else None,
+        )
+        if cancel_flag or completed_successfully:
+            return None
+
+        # 如果进程崩溃但 IPC 未捕获错误，补充抛错
+        if (
+            self.translate_process
+            and self.translate_process.exitcode not in (0, None)
+            and not self.cb.has_error()
+        ):
+            return SubprocessCrashError(
+                f"Translation subprocess crashed with exit code {self.translate_process.exitcode}",
+                exit_code=self.translate_process.exitcode,
+            )
+        if self.cb.has_error():
+            return self.cb.error
+        return None
+
+
 def _translate_wrapper(
     settings: SettingsModel,
     file: Path,
@@ -265,216 +512,10 @@ async def _translate_in_subprocess(
     settings: SettingsModel,
     file: Path,
 ):
-    # 30 minutes timeout
-    cb = asynchronize.AsyncCallback(timeout=30 * 60)
-
-    (pipe_progress_recv, pipe_progress_send) = multiprocessing.Pipe(duplex=False)
-    (pipe_cancel_message_recv, pipe_cancel_message_send) = multiprocessing.Pipe(
-        duplex=False
-    )
-    logger_queue = multiprocessing.Queue()
-    cancel_event = threading.Event()
-
-    def recv_thread():
-        while True:
-            if cancel_event.is_set():
-                break
-            try:
-                event = pipe_progress_recv.recv()
-                if event is None:
-                    logger.debug("recv none event")
-                    cb.finished_callback_without_args()
-                    break
-
-                # Handle different types of messages from the subprocess
-                if isinstance(event, TranslationError):
-                    # Received a structured error object
-                    logger.error(f"Received error from subprocess: {event}")
-                    cb.error_callback(event)
-                    break
-                elif isinstance(event, dict):
-                    # Process normal progress events
-                    cb.step_callback(event)
-                else:
-                    # Unexpected message type
-                    logger.warning(
-                        f"Unexpected message type from subprocess: {type(event)}"
-                    )
-                    error = IPCError(f"Unexpected message type: {type(event)}")
-                    cb.error_callback(error)
-                    break
-            except EOFError:
-                logger.debug("recv eof error")
-                error = IPCError("Connection to subprocess was closed unexpectedly")
-                cb.error_callback(error)
-                break
-            except Exception as e:
-                if not cancel_event.is_set():
-                    logger.error(f"Error receiving event: {e}")
-                error = IPCError(f"IPC error: {e}", details=str(e))
-                cb.error_callback(error)
-                break
-
-    def log_thread():
-        while True:
-            try:
-                record = logger_queue.get()
-                if record is None:
-                    logger.info("Listener stopped.")
-                    break
-                log_entry = {
-                    "type": "log",
-                    "level": record.levelname,
-                    "message": record.getMessage(),
-                    "timestamp": datetime.fromtimestamp(
-                        record.created, tz=timezone.utc
-                    ).isoformat(),
-                }
-                try:
-                    cb.step_callback(log_entry)
-                except Exception as exc:  # noqa: BLE001
-                    if not cancel_event.is_set():
-                        logger.debug(f"Failed to forward log event: {exc}")
-                logger.handle(record)
-            except KeyboardInterrupt:
-                logger.info("Listener stopped.")
-                break
-            except queue.Empty:
-                logger.info("Listener stopped.")
-                break
-            except Exception:
-                logger.error("Failure in listener_process")
-                break
-
-    recv_t = threading.Thread(target=recv_thread)
-    recv_t.start()
-    log_t = threading.Thread(target=log_thread)
-    log_t.start()
-
-    translate_process = multiprocessing.Process(
-        target=_translate_wrapper,
-        args=(
-            settings,
-            file,
-            pipe_progress_send,
-            pipe_cancel_message_recv,
-            logger_queue,
-        ),
-    )
-    translate_process.start()
-    cancel_flag = False
-    completed_successfully = False
-    try:
-        async for event in cb:
-            # Check for errors before yielding events
-            if cb.has_error():
-                # Let AsyncCallback.__anext__ raise the error
-                # This will break out of the loop
-                break
-            payload = event.args[0]
-            yield payload
-            try:
-                if isinstance(payload, dict) and payload.get("type") == "finish":
-                    completed_successfully = True
-                    break
-            except Exception:  # noqa: BLE001
-                pass
-    except asyncio.CancelledError:
-        cancel_flag = True
-        logger.info("Process Translation cancelled")
-        raise
-    except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt received in main process")
-    finally:
-        logger.debug("send cancel message")
-        if not completed_successfully:
-            try:
-                pipe_cancel_message_send.send(True)
-            except (OSError, BrokenPipeError) as e:
-                logger.debug(f"Failed to send cancel message: {e}")
-        logger.debug("close pipe cancel message")
-        try:
-            pipe_cancel_message_send.close()
-        except Exception as e:
-            logger.debug(f"Failed to close pipe_cancel_message_send: {e}")
-
-        try:
-            pipe_progress_send.send(None)
-        except (OSError, BrokenPipeError) as e:
-            logger.debug(f"Failed to send None to pipe_progress_send: {e}")
-
-        if not completed_successfully:
-            logger.debug("set cancel event")
-            cancel_event.set()
-
-        # 关闭接收端管道以中断 recv_thread 中的阻塞接收
-        try:
-            pipe_progress_recv.close()
-            logger.debug("closed pipe_progress_recv")
-        except Exception as e:
-            logger.debug(f"Failed to close pipe_progress_recv: {e}")
-
-        # 终止子进程，使用超时防止卡住
-        join_timeout = 10
-        if completed_successfully and not cancel_flag:
-            join_timeout = 30
-        translate_process.join(timeout=join_timeout)
-        logger.debug("join translate process")
-        if translate_process.is_alive():
-            if completed_successfully and not cancel_flag:
-                logger.info("Translate process still running after completion, allowing extra time")
-                translate_process.join(timeout=30)
-            if translate_process.is_alive():
-                logger.info("Translate process did not finish in time, terminate it")
-                translate_process.terminate()
-                translate_process.join(timeout=5)
-            if translate_process.is_alive():
-                logger.info("Translate process did not finish in time, killing it")
-                try:
-                    translate_process.kill()
-                    translate_process.join(timeout=2)
-                    logger.info("Translate process killed")
-                except Exception as e:
-                    logger.exception(f"Error killing translate process: {e}")
-
-        # 等待接收线程，使用超时防止卡住
-        logger.debug("join recv thread")
-        recv_t.join(timeout=2)
-        if recv_t.is_alive():
-            logger.warning("Recv thread did not finish in time")
-
-        try:
-            logger_queue.put(None)
-        except Exception as e:
-            logger.debug(f"Failed to send sentinel to logger_queue: {e}")
-
-        # 等待日志线程，使用超时防止卡住
-        log_t.join(timeout=5)
-        if log_t.is_alive():
-            logger.warning("Log thread did not finish in time")
-
-        # 尝试关闭日志队列
-        try:
-            logger_queue.close()
-        except Exception as e:
-            logger.debug(f"Failed to close logger_queue: {e}")
-
-        logger.debug("translate process exit code: %s", translate_process.exitcode)
-        if not cancel_flag and not completed_successfully:
-            # Check if the process crashed but no error was captured through IPC
-            if translate_process.exitcode not in (0, None) and not cb.has_error():
-                error = SubprocessCrashError(
-                    f"Translation subprocess crashed with exit code {translate_process.exitcode}",
-                    exit_code=translate_process.exitcode,
-                )
-                # We need to raise the error as we're outside the async for loop now
-                raise error
-            elif cb.has_error():
-                # If we have a stored error but haven't raised it yet (exited the loop normally)
-                # re-raise it now
-                # Note: In most cases, this won't execute because the error would already have been
-                # raised by AsyncCallback.__anext__
-                raise cb.error
+    manager = TranslateProcessManager(settings, file, timeout=30 * 60)
+    manager.start()
+    async for payload in manager.iter_events():
+        yield payload
 
 
 def _get_glossaries(settings: SettingsModel) -> list[Glossary] | None:
@@ -488,34 +529,27 @@ def _get_glossaries(settings: SettingsModel) -> list[Glossary] | None:
     return glossaries
 
 
-def create_babeldoc_config(settings: SettingsModel, file: Path) -> BabelDOCConfig:
-    if not isinstance(settings, SettingsModel):
-        raise ValueError(f"{type(settings)} is not SettingsModel")
-    translator = get_translator(settings)
-    if translator is None:
-        raise ValueError("No translator found")
-
-    # 设置分割策略
-    split_strategy = None
-    if settings.pdf.max_pages_per_part:
-        split_strategy = BabelDOCConfig.create_max_pages_per_part_split_strategy(
-            settings.pdf.max_pages_per_part
-        )
-
-    # 设置水印模式
+def _map_watermark_mode(mode: str) -> BabelDOCWatermarkMode:
+    """将配置值映射为 BabelDOC 水印枚举，默认回退到带水印模式。"""
     watermark_output_mode_maps = {
         "no_watermark": BabelDOCWatermarkMode.NoWatermark,
         "both": BabelDOCWatermarkMode.Both,
         "watermarked": BabelDOCWatermarkMode.Watermarked,
     }
+    return watermark_output_mode_maps.get(mode, BabelDOCWatermarkMode.Watermarked)
 
-    watermark_output_mode = settings.pdf.watermark_output_mode
 
-    watermark_mode = watermark_output_mode_maps.get(
-        watermark_output_mode, BabelDOCWatermarkMode.Watermarked
-    )
+def _build_split_strategy(settings: SettingsModel):
+    """按配置创建分页切割策略；未设置时返回 None。"""
+    if settings.pdf.max_pages_per_part:
+        return BabelDOCConfig.create_max_pages_per_part_split_strategy(
+            settings.pdf.max_pages_per_part
+        )
+    return None
 
-    table_model = None
+
+def _build_table_model(settings: SettingsModel):
+    """根据表格翻译配置决定是否初始化 RapidOCR 表格模型。"""
     should_load_rapidocr = (
         settings.pdf.translate_table_text and not settings.pdf.disable_rapidocr
     )
@@ -523,20 +557,46 @@ def create_babeldoc_config(settings: SettingsModel, file: Path) -> BabelDOCConfi
         logger.info("Table translation enabled; initializing RapidOCR model")
         from babeldoc.docvision.table_detection.rapidocr import RapidOCRModel
 
-        table_model = RapidOCRModel()
-    elif settings.pdf.translate_table_text and settings.pdf.disable_rapidocr:
+        return RapidOCRModel()
+    if settings.pdf.translate_table_text and settings.pdf.disable_rapidocr:
         logger.info(
             "Table translation requested but RapidOCR loading disabled; skipping RapidOCR model initialization"
         )
     else:
         logger.info("Table translation disabled; skipping RapidOCR model initialization")
+    return None
+
+
+def _select_doc_layout_model(settings: SettingsModel) -> DocLayoutModel | None:
+    """
+    选择文档布局模型。
+    - 若开启表格翻译且未禁用 RapidOCR，则返回 None 让 BabelDOC 使用默认布局/检测模型。
+    - 其他情况使用轻量 LLM-only stub，避免加载 ONNX 布局模型。
+    """
+    if settings.pdf.translate_table_text and not settings.pdf.disable_rapidocr:
+        logger.info("Using default doc layout model for table translation")
+        return None
+    return LLM_ONLY_DOC_LAYOUT_MODEL
+
+
+def create_babeldoc_config(settings: SettingsModel, file: Path) -> BabelDOCConfig:
+    if not isinstance(settings, SettingsModel):
+        raise ValueError(f"{type(settings)} is not SettingsModel")
+    translator = get_translator(settings)
+    if translator is None:
+        raise ValueError("No translator found")
+
+    split_strategy = _build_split_strategy(settings)
+    watermark_mode = _map_watermark_mode(settings.pdf.watermark_output_mode)
+    table_model = _build_table_model(settings)
+    doc_layout_model = _select_doc_layout_model(settings)
 
     babeldoc_config = BabelDOCConfig(
         input_file=file,
         font=None,
         pages=settings.pdf.pages,
         output_dir=settings.translation.output,
-        doc_layout_model=LLM_ONLY_DOC_LAYOUT_MODEL,
+        doc_layout_model=doc_layout_model,
         translator=translator,
         debug=settings.basic.debug,
         lang_in=settings.translation.lang_in,

@@ -191,7 +191,18 @@ class ConfigService:
                 "translation": {
                     "type": "object",
                     "properties": {
-                        "default_engine": {"type": "string", "enum": ["google", "deepl", "openai", "baidu", "tencent"]},
+                        "default_engine": {
+                            "type": "string",
+                            "enum": [
+                                "google",
+                                "deepl",
+                                "openai",
+                                "openaicompatible",
+                                "baidu",
+                                "tencent",
+                                "siliconflowfree",
+                            ],
+                        },
                         "timeout": {"type": "integer", "minimum": 60, "maximum": 7200},
                         "max_file_size": {"type": "integer", "minimum": 1048576, "maximum": 1073741824},
                         "max_concurrent_tasks": {"type": "integer", "minimum": 1, "maximum": 100},

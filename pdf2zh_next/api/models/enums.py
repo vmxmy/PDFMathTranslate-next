@@ -68,6 +68,7 @@ class TranslationEngine(str, Enum):
     OPENAI_COMPATIBLE = "openaicompatible"
     BAIDU = "baidu"
     TENCENT = "tencent"
+    SILICONFLOWFREE = "siliconflowfree"
 
 
 class ValidationMode(str, Enum):
