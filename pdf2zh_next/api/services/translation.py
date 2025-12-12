@@ -35,6 +35,7 @@ from ..models.enums import TranslationStage
 from ..models.enums import UserRole
 from ..utils import ENGINE_TYPE_MAP
 from ..utils import build_settings_model
+from pdf2zh_next.config.translate_engine_model import TRANSLATION_ENGINE_METADATA
 from .config import config_service
 from ..settings import api_settings
 from .task_manager import task_manager
@@ -600,7 +601,11 @@ class TranslationService:
             )
 
         engine_name = settings.translate_engine_settings.translate_engine_type
-        engine_mapping = {v: k for k, v in ENGINE_TYPE_MAP.items()}
+        engine_mapping = {
+            meta.translate_engine_type: meta.cli_flag_name
+            for meta in TRANSLATION_ENGINE_METADATA
+        }
+        engine_mapping.update({v: k for k, v in ENGINE_TYPE_MAP.items()})
         engine_key = engine_mapping.get(engine_name)
         if not engine_key and isinstance(config.get("translation_engine"), TranslationEngine):
             engine_key = config["translation_engine"].value
@@ -608,13 +613,16 @@ class TranslationService:
             try:
                 engine_key = TranslationEngine(config["translation_engine"].lower()).value
             except ValueError:
-                engine_key = None
+                engine_key = config.get("translation_engine")
         if not engine_key:
             try:
                 engine_key = TranslationEngine(engine_name.lower()).value
             except ValueError:
-                engine_key = TranslationEngine.GOOGLE.value
-        engine_used = TranslationEngine(engine_key)
+                engine_key = engine_name.lower()
+        try:
+            engine_used = TranslationEngine(engine_key)
+        except ValueError:
+            engine_used = TranslationEngine.GOOGLE
 
         logger.debug(
             "Building translation result | task=%s | engine_name=%s | engine_key=%s | config_engine=%s",
@@ -939,7 +947,16 @@ class TranslationService:
 
             logger.info(f"配置引擎参数：{task_id}")
             engine_key = engine_key_value.lower()
-            engine_type = ENGINE_TYPE_MAP.get(engine_key, "Google")
+            engine_type = ENGINE_TYPE_MAP.get(engine_key)
+            if not engine_type:
+                meta = next(
+                    (m for m in TRANSLATION_ENGINE_METADATA if m.cli_flag_name == engine_key),
+                    None,
+                )
+                if meta:
+                    engine_type = meta.translate_engine_type
+            if not engine_type:
+                engine_type = engine_key.title() if engine_key else "Google"
             engine_config = translation_cfg.get("engines", {}).get(engine_key, {})
             engine_payload: dict[str, Any] = {
                 "translate_engine_type": engine_type,

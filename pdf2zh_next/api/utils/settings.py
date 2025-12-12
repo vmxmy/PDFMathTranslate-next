@@ -13,11 +13,31 @@ DEFAULT_CLI_SETTINGS_DICT = DEFAULT_CLI_SETTINGS.model_dump(mode="json")
 
 ENGINE_TYPE_MAP = {
     "google": "Google",
+    "bing": "Bing",
     "deepl": "DeepL",
     "openai": "OpenAI",
     "openaicompatible": "OpenAICompatible",
+    "azure-openai": "AzureOpenAI",
+    "azure": "Azure",
     "tencent": "TencentMechineTranslation",
+    "tencentmechinetranslation": "TencentMechineTranslation",
     "baidu": "Baidu",
+    "siliconflow": "SiliconFlow",
+    "siliconflowfree": "SiliconFlowFree",
+    "qwen-mt": "QwenMt",
+    "dify": "Dify",
+    "grok": "Grok",
+    "groq": "Groq",
+    "gemini": "Gemini",
+    "zhipu": "Zhipu",
+    "modelscope": "ModelScope",
+    "claudecode": "ClaudeCode",
+    "deepseek": "DeepSeek",
+    "aliyun_dashscope": "AliyunDashScope",
+    "ollama": "Ollama",
+    "xinference": "Xinference",
+    "anythingllm": "AnythingLLM",
+    "siliconflowfree": "SiliconFlowFree",
 }
 
 
